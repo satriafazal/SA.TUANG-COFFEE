@@ -1,6 +1,6 @@
 /* Customer journey screens for SA.TUANG COFFEE. */
 .customer-app{min-height:100vh;background:var(--paper)}
-.customer-header .header-order-button{display:none!important}
+.customer-header .header-order-button,.visual-tag,.visual-number{display:none!important}
 .account-chip{min-height:40px;padding:0 13px;border:1.5px solid var(--ink);background:var(--card);font-size:11px;font-weight:700}
 
 
