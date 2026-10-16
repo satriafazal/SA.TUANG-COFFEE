@@ -197,15 +197,6 @@ function BannerCarousel({
                   <div className="banner-card-scrim" />
 
                   <div className="banner-card-content">
-                    <div className="banner-card-eyebrow">
-                      <span className="banner-card-badge">SOROTAN GERAI</span>
-                      {banners.length > 1 && (
-                        <span className="banner-card-index">
-                          {index + 1} / {banners.length}
-                        </span>
-                      )}
-                    </div>
-
                     <h3 className="banner-card-title">{banner.title}</h3>
 
                     {banner.subtitle && (
