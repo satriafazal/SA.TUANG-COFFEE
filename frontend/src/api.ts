@@ -21,8 +21,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return body as T
 }
 
+export type CustomerBanner = {
+  id: number
+  title: string
+  subtitle: string | null
+  image_path: string | null
+  link_url: string | null
+}
+
 export async function getMenu() {
-  return request<{ categories: Array<{ id: number; name: string; slug: string; sort_order: number }>; products: Product[] }>('/menu')
+  return request<{
+    categories: Array<{ id: number; name: string; slug: string; sort_order: number }>
+    products: Product[]
+    banners?: CustomerBanner[]
+  }>('/menu')
 }
 
 export function createCashOrder(input: {

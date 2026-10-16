@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Banner;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
@@ -39,9 +40,22 @@ class MenuController extends Controller
                 'is_available',
             ]);
 
+        $banners = Banner::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('created_at', 'desc')
+            ->get([
+                'id',
+                'title',
+                'subtitle',
+                'image_path',
+                'link_url',
+            ]);
+
         return response()->json([
             'categories' => $categories,
             'products' => $products,
+            'banners' => $banners,
         ]);
     }
 }

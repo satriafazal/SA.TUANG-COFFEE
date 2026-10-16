@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type FormEvent } from 'react'
-import { createCashOrder, getMenu, trackOrder } from './api'
+import { createCashOrder, getMenu, trackOrder, type CustomerBanner } from './api'
 import type { Product, TrackedOrder } from './types'
 import {
   hashPrototypePassword,
@@ -65,9 +65,198 @@ function startingScreen(session: PrototypeSession | null): Screen {
   return 'landing'
 }
 
+function resolveBannerImage(banner: CustomerBanner): string | null {
+  if (banner.image_path && banner.image_path.trim().length > 0) {
+    return banner.image_path.trim()
+  }
+  if (banner.link_url && (
+    banner.link_url.includes('images.unsplash.com') ||
+    banner.link_url.match(/\.(jpeg|jpg|png|webp|gif)($|\?)/i)
+  )) {
+    return banner.link_url.trim()
+  }
+  return null
+}
+
+function resolveBannerActionLink(banner: CustomerBanner): string | null {
+  if (banner.link_url && (
+    banner.link_url.includes('images.unsplash.com') ||
+    banner.link_url.match(/\.(jpeg|jpg|png|webp|gif)($|\?)/i)
+  ) && !banner.image_path) {
+    return null
+  }
+  return banner.link_url ? banner.link_url.trim() : null
+}
+
+function BannerCarousel({
+  banners,
+  onActionClick,
+}: {
+  banners: CustomerBanner[]
+  onActionClick?: (link: string) => void
+}) {
+  const [current, setCurrent] = useState(0)
+  const [isPaused, setIsPaused] = useState(false)
+  const touchStartX = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (current >= banners.length) {
+      setCurrent(0)
+    }
+  }, [banners.length, current])
+
+  useEffect(() => {
+    if (banners.length <= 1 || isPaused) return
+    const timer = setInterval(() => {
+      setCurrent((prev) => (prev + 1) % banners.length)
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [banners.length, isPaused])
+
+  if (!banners.length) return null
+
+  const handlePrev = () => {
+    setCurrent((prev) => (prev - 1 + banners.length) % banners.length)
+  }
+
+  const handleNext = () => {
+    setCurrent((prev) => (prev + 1) % banners.length)
+  }
+
+  return (
+    <section className="banner-carousel-section" aria-label="Sorotan dan Promo Gerai">
+      <div
+        className="banner-carousel-frame"
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
+        onTouchEnd={(e) => {
+          if (touchStartX.current === null) return
+          const diff = touchStartX.current - e.changedTouches[0].clientX
+          if (diff > 40) handleNext()
+          else if (diff < -40) handlePrev()
+          touchStartX.current = null
+        }}
+      >
+        <div
+          className="banner-carousel-track"
+          style={{ transform: `translateX(-${current * 100}%)` }}
+        >
+          {banners.map((banner, index) => {
+            const image = resolveBannerImage(banner)
+            const actionLink = resolveBannerActionLink(banner)
+
+            return (
+              <article
+                key={banner.id}
+                className={`banner-slide ${index === current ? 'active' : ''}`}
+                aria-hidden={index !== current}
+              >
+                {image ? (
+                  <img
+                    src={image}
+                    alt={banner.title}
+                    className="banner-slide-image"
+                    loading={index === 0 ? 'eager' : 'lazy'}
+                    onError={(e) => {
+                      (e.currentTarget as HTMLImageElement).style.display = 'none'
+                    }}
+                  />
+                ) : (
+                  <div className="banner-slide-pattern">
+                    <span className="banner-slide-pattern-coffee" aria-hidden="true">☕</span>
+                  </div>
+                )}
+
+                <div className="banner-slide-scrim" />
+
+                <div className="banner-slide-content">
+                  <div className="banner-slide-eyebrow">
+                    <span className="banner-slide-badge">SOROTAN GERAI</span>
+                    <span className="banner-slide-index">
+                      {index + 1} / {banners.length}
+                    </span>
+                  </div>
+
+                  <h3 className="banner-slide-title">{banner.title}</h3>
+
+                  {banner.subtitle && (
+                    <p className="banner-slide-subtitle">{banner.subtitle}</p>
+                  )}
+
+                  {actionLink && (
+                    <div className="banner-slide-action">
+                      {actionLink.startsWith('#') || actionLink === 'order' ? (
+                        <button
+                          type="button"
+                          className="banner-slide-btn"
+                          onClick={() => {
+                            if (onActionClick) onActionClick(actionLink)
+                          }}
+                        >
+                          Lihat Promo <span>↗</span>
+                        </button>
+                      ) : (
+                        <a
+                          href={actionLink}
+                          className="banner-slide-btn"
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Buka Info <span>↗</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </article>
+            )
+          })}
+        </div>
+
+        {banners.length > 1 && (
+          <>
+            <button
+              type="button"
+              className="banner-carousel-arrow prev"
+              onClick={handlePrev}
+              aria-label="Banner sebelumnya"
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              className="banner-carousel-arrow next"
+              onClick={handleNext}
+              aria-label="Banner berikutnya"
+            >
+              ›
+            </button>
+
+            <div className="banner-carousel-dots" role="tablist" aria-label="Indikator banner">
+              {banners.map((_, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === current}
+                  aria-label={`Pindah ke banner ${i + 1}`}
+                  className={`banner-carousel-dot ${i === current ? 'active' : ''}`}
+                  onClick={() => setCurrent(i)}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function App() {
   const [menu, setMenu] = useState<Product[]>([])
   const [categories, setCategories] = useState<Array<{ id: number; name: string; slug: string }>>([])
+  const [banners, setBanners] = useState<CustomerBanner[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [cart, dispatch] = useReducer(cartReducer, undefined, readCart)
@@ -119,7 +308,11 @@ function App() {
 
   useEffect(() => { localStorage.setItem('satuang-cart', JSON.stringify(cart)) }, [cart])
   useEffect(() => {
-    getMenu().then((data) => { setMenu(data.products); setCategories(data.categories) })
+    getMenu().then((data) => {
+      setMenu(data.products)
+      setCategories(data.categories)
+      setBanners(data.banners ?? [])
+    })
       .catch((error: Error) => setLoadError(error.message))
       .finally(() => setLoading(false))
   }, [])
@@ -327,6 +520,11 @@ function App() {
       <div className="landing-copy"><span className="eyebrow"><i /> BANJAR WIJAYA · TANGERANG</span><h1>Satu tuang,<br /><em>satu jeda.</em></h1><p>Ruang singgah untuk menikmati kopi, makanan, dan waktu bersama. Temukan suasana SA.TUANG COFFEE Banjar Wijaya.</p><div className="landing-actions"><button className="button button-accent" onClick={startOrdering}>Pesan Sekarang <span>↗</span></button><button className="button button-outline landing-track-button" onClick={() => moveTo('tracking')}>Lacak Pesanan <span>⌕</span></button><a className="button button-outline" href="#about">Kenali SA.TUANG <span>↓</span></a></div><div className="landing-meta"><span>SA.TUANG COFFEE</span><span>INDUSTRIAL · OUTDOOR · EVERYDAY</span></div></div>
       <div className="landing-art" role="img" aria-label="Ilustrasi kopi dalam suasana industrial"><span className="art-label">ONE<br />POUR</span><div className="landing-sun"/><div className="landing-cup"><span>✳</span></div><span className="art-caption">BREWED FOR A LITTLE PAUSE</span><span className="art-side">BANJAR WIJAYA · TANGERANG</span></div>
       </div>
+
+      {banners.length > 0 && (
+        <BannerCarousel banners={banners} onActionClick={(link) => { if (link.includes('menu') || link === 'order') startOrdering() }} />
+      )}
+
       <section id="about" className="landing-about"><div className="section-kicker">01 — TENTANG KAMI</div><div><h2>Ruang untuk<br /><em>berhenti sebentar.</em></h2><p>SA.TUANG menghadirkan kopi dan sajian untuk menemani jeda—dengan suasana industrial dan area terbuka di Banjar Wijaya. Datang untuk secangkir kopi, tinggal untuk kebersamaan.</p><p className="small-copy">“Sa.Tuang” dimaknai sebagai “One Pour”—satu tuang yang membuka ruang untuk menikmati momen.</p></div></section>
       <section id="menu-preview" className="landing-menu"><div className="landing-menu-head"><div><span className="eyebrow light">DARI BAR KAMI</span><h2>Kenali menu pilihan<span className="accent-dot">.</span></h2><p>Jelajahi sajian sebelum memulai pemesanan.</p></div><button className="button button-outline-light" onClick={startOrdering}>Lihat menu pemesanan <span>↗</span></button></div>
       {loading ? <div className="notice">Menyiapkan pilihan menu…</div> : loadError ? <div className="notice error">Menu belum dapat dimuat. {loadError}</div> : <div className="landing-menu-grid">{menu.slice(0, 3).map((product, index) => <article className="preview-card" key={product.id}><div className={`preview-visual visual-${index % 6}`}><span>{product.item_type === 'drink' ? '☕' : '🥐'}</span></div><div className="preview-info"><small>{product.category?.name ?? 'Menu'}</small><h3>{product.name}</h3><p>{product.description || 'Sajian dari SA.TUANG COFFEE.'}</p></div></article>)}</div>}
