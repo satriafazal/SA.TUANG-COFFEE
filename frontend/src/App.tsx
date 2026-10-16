@@ -517,7 +517,7 @@ function App() {
         <span className="brand-mark">S</span><span className="brand-copy"><strong>SA.TUANG</strong><small>COFFEE · BANJAR WIJAYA</small></span>
       </a>
       {screen === 'landing' ? <nav className="desktop-nav" aria-label="Navigasi utama">
-        <a className="nav-link" href="#about">Tentang</a><a className="nav-link" href="#menu-preview">Menu</a><a className="nav-link" href="#location">Lokasi</a><button className="nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button><button className="nav-link nav-link-order" onClick={startOrdering}>Pesan Sekarang</button>
+        <a className="nav-link" href="#about">Tentang</a><a className="nav-link" href="#menu-preview">Menu</a><a className="nav-link" href="#location">Lokasi</a><button className="nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
       </nav> : isMember ? <nav className="desktop-nav" aria-label="Navigasi Member">
         <button className="nav-link" onClick={() => { moveTo('member-home') }}>Dashboard</button>
         <button className="nav-link" onClick={() => moveTo('order-menu')}>Pesan menu</button>
@@ -544,9 +544,9 @@ function App() {
         {screen === 'landing' ? (
           <>
             <a className="mobile-nav-link" href="#about">Tentang</a>
+            <a className="mobile-nav-link" href="#menu-preview">Menu</a>
             <a className="mobile-nav-link" href="#location">Lokasi</a>
             <button className="mobile-nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
-            <button className="mobile-nav-link mobile-nav-cta" onClick={startOrdering}>Pesan Sekarang</button>
           </>
         ) : isMember ? (
           <>
@@ -562,7 +562,6 @@ function App() {
             <button className={`mobile-nav-link ${screen === 'tracking' ? 'active' : ''}`} onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
             {sessionMode === 'guest' && <button className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`} onClick={() => moveTo('orders')}>Pesanan Saya</button>}
             {sessionMode === 'guest' && <button className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`} onClick={() => moveTo('order-menu')}>Menu</button>}
-            {sessionMode !== 'guest' && <button className="mobile-nav-link mobile-nav-cta" onClick={startOrdering}>Pesan Sekarang</button>}
           </>
         )}
       </nav>
