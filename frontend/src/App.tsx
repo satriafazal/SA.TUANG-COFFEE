@@ -88,6 +88,13 @@ function resolveBannerActionLink(banner: CustomerBanner): string | null {
   return banner.link_url ? banner.link_url.trim() : null
 }
 
+function getVisibleCount(): number {
+  if (typeof window === 'undefined') return 3
+  if (window.innerWidth >= 1024) return 3
+  if (window.innerWidth >= 641) return 2
+  return 1
+}
+
 function BannerCarousel({
   banners,
   onActionClick,
@@ -97,36 +104,50 @@ function BannerCarousel({
 }) {
   const [current, setCurrent] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [visibleCount, setVisibleCount] = useState<number>(getVisibleCount)
   const touchStartX = useRef<number | null>(null)
 
   useEffect(() => {
-    if (current >= banners.length) {
-      setCurrent(0)
-    }
-  }, [banners.length, current])
-
-  useEffect(() => {
-    if (banners.length <= 1 || isPaused) return
-    const timer = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % banners.length)
-    }, 5000)
-    return () => clearInterval(timer)
-  }, [banners.length, isPaused])
+    const handleResize = () => setVisibleCount(getVisibleCount())
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   if (!banners.length) return null
 
+  const gap = visibleCount === 3 ? 20 : visibleCount === 2 ? 16 : 14
+  const maxIndex = Math.max(0, banners.length - visibleCount)
+
+  useEffect(() => {
+    if (current > maxIndex) {
+      setCurrent(maxIndex)
+    }
+  }, [maxIndex, current])
+
+  useEffect(() => {
+    if (maxIndex === 0 || isPaused) return
+    const timer = setInterval(() => {
+      setCurrent((prev) => (prev >= maxIndex ? 0 : prev + 1))
+    }, 5000)
+    return () => clearInterval(timer)
+  }, [maxIndex, isPaused])
+
   const handlePrev = () => {
-    setCurrent((prev) => (prev - 1 + banners.length) % banners.length)
+    setCurrent((prev) => (prev <= 0 ? maxIndex : prev - 1))
   }
 
   const handleNext = () => {
-    setCurrent((prev) => (prev + 1) % banners.length)
+    setCurrent((prev) => (prev >= maxIndex ? 0 : prev + 1))
   }
+
+  const translateFormula = maxIndex === 0
+    ? '0px'
+    : `calc(-${current} * (100% + ${gap}px) / ${visibleCount})`
 
   return (
     <section className="banner-carousel-section" aria-label="Sorotan dan Promo Gerai">
       <div
-        className="banner-carousel-frame"
+        className="banner-carousel-wrapper"
         onMouseEnter={() => setIsPaused(true)}
         onMouseLeave={() => setIsPaused(false)}
         onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX }}
@@ -138,115 +159,126 @@ function BannerCarousel({
           touchStartX.current = null
         }}
       >
-        <div
-          className="banner-carousel-track"
-          style={{ transform: `translateX(-${current * 100}%)` }}
-        >
-          {banners.map((banner, index) => {
-            const image = resolveBannerImage(banner)
-            const actionLink = resolveBannerActionLink(banner)
+        <div className="banner-carousel-viewport">
+          <div
+            className="banner-carousel-track"
+            style={{ transform: `translateX(${translateFormula})` }}
+          >
+            {banners.map((banner, index) => {
+              const image = resolveBannerImage(banner)
+              const actionLink = resolveBannerActionLink(banner)
 
-            return (
-              <article
-                key={banner.id}
-                className={`banner-slide ${index === current ? 'active' : ''}`}
-                aria-hidden={index !== current}
-              >
-                {image ? (
-                  <img
-                    src={image}
-                    alt={banner.title}
-                    className="banner-slide-image"
-                    loading={index === 0 ? 'eager' : 'lazy'}
-                    onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).style.display = 'none'
-                    }}
-                  />
-                ) : (
-                  <div className="banner-slide-pattern">
-                    <span className="banner-slide-pattern-coffee" aria-hidden="true">☕</span>
-                  </div>
-                )}
-
-                <div className="banner-slide-scrim" />
-
-                <div className="banner-slide-content">
-                  <div className="banner-slide-eyebrow">
-                    <span className="banner-slide-badge">SOROTAN GERAI</span>
-                    <span className="banner-slide-index">
-                      {index + 1} / {banners.length}
-                    </span>
-                  </div>
-
-                  <h3 className="banner-slide-title">{banner.title}</h3>
-
-                  {banner.subtitle && (
-                    <p className="banner-slide-subtitle">{banner.subtitle}</p>
-                  )}
-
-                  {actionLink && (
-                    <div className="banner-slide-action">
-                      {actionLink.startsWith('#') || actionLink === 'order' ? (
-                        <button
-                          type="button"
-                          className="banner-slide-btn"
-                          onClick={() => {
-                            if (onActionClick) onActionClick(actionLink)
-                          }}
-                        >
-                          Lihat Promo <span>↗</span>
-                        </button>
-                      ) : (
-                        <a
-                          href={actionLink}
-                          className="banner-slide-btn"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Buka Info <span>↗</span>
-                        </a>
-                      )}
+              return (
+                <article
+                  key={banner.id}
+                  className="banner-card"
+                  onClick={() => {
+                    if (actionLink && onActionClick) {
+                      onActionClick(actionLink)
+                    }
+                  }}
+                >
+                  {image ? (
+                    <img
+                      src={image}
+                      alt={banner.title}
+                      className="banner-card-img"
+                      loading={index < 3 ? 'eager' : 'lazy'}
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none'
+                      }}
+                    />
+                  ) : (
+                    <div className="banner-card-pattern">
+                      <span className="banner-card-pattern-icon" aria-hidden="true">☕</span>
                     </div>
                   )}
-                </div>
-              </article>
-            )
-          })}
+
+                  <div className="banner-card-scrim" />
+
+                  <div className="banner-card-content">
+                    <div className="banner-card-eyebrow">
+                      <span className="banner-card-badge">SOROTAN GERAI</span>
+                      {banners.length > 1 && (
+                        <span className="banner-card-index">
+                          {index + 1} / {banners.length}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="banner-card-title">{banner.title}</h3>
+
+                    {banner.subtitle && (
+                      <p className="banner-card-subtitle">{banner.subtitle}</p>
+                    )}
+
+                    {actionLink && (
+                      <div className="banner-card-action">
+                        {actionLink.startsWith('#') || actionLink === 'order' ? (
+                          <button
+                            type="button"
+                            className="banner-card-btn"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (onActionClick) onActionClick(actionLink)
+                            }}
+                          >
+                            Lihat Promo <span>↗</span>
+                          </button>
+                        ) : (
+                          <a
+                            href={actionLink}
+                            className="banner-card-btn"
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            Buka Info <span>↗</span>
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </article>
+              )
+            })}
+          </div>
         </div>
 
-        {banners.length > 1 && (
-          <>
+        {maxIndex > 0 && (
+          <div className="banner-carousel-controls">
             <button
               type="button"
-              className="banner-carousel-arrow prev"
+              className="banner-carousel-arrow-btn"
               onClick={handlePrev}
               aria-label="Banner sebelumnya"
             >
               ‹
             </button>
-            <button
-              type="button"
-              className="banner-carousel-arrow next"
-              onClick={handleNext}
-              aria-label="Banner berikutnya"
-            >
-              ›
-            </button>
 
             <div className="banner-carousel-dots" role="tablist" aria-label="Indikator banner">
-              {banners.map((_, i) => (
+              {Array.from({ length: maxIndex + 1 }).map((_, i) => (
                 <button
                   key={i}
                   type="button"
                   role="tab"
                   aria-selected={i === current}
-                  aria-label={`Pindah ke banner ${i + 1}`}
+                  aria-label={`Pindah ke slide ${i + 1}`}
                   className={`banner-carousel-dot ${i === current ? 'active' : ''}`}
                   onClick={() => setCurrent(i)}
                 />
               ))}
             </div>
-          </>
+
+            <button
+              type="button"
+              className="banner-carousel-arrow-btn"
+              onClick={handleNext}
+              aria-label="Banner berikutnya"
+            >
+              ›
+            </button>
+          </div>
         )}
       </div>
     </section>
