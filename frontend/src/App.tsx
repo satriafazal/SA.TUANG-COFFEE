@@ -517,7 +517,7 @@ function App() {
         <span className="brand-mark">S</span><span className="brand-copy"><strong>SA.TUANG</strong><small>COFFEE · BANJAR WIJAYA</small></span>
       </a>
       {screen === 'landing' ? <nav className="desktop-nav" aria-label="Navigasi utama">
-        <a className="nav-link" href="#about">Tentang</a><a className="nav-link" href="#menu-preview">Menu</a><a className="nav-link" href="#location">Lokasi</a><button className="nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
+        <a className="nav-link" href="#about">Tentang</a><a className="nav-link" href="#menu-preview">Menu</a><a className="nav-link" href="#location">Lokasi</a><button className="nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button><button className="nav-link nav-link-order" onClick={startOrdering}>Pesan Sekarang</button>
       </nav> : isMember ? <nav className="desktop-nav" aria-label="Navigasi Member">
         <button className="nav-link" onClick={() => { moveTo('member-home') }}>Dashboard</button>
         <button className="nav-link" onClick={() => moveTo('order-menu')}>Pesan menu</button>
@@ -531,9 +531,40 @@ function App() {
         {sessionMode === 'guest' && <button className="nav-link" onClick={() => moveTo('identity')}>Ganti cara pesan</button>}
         {screen === 'identity' && <button className="nav-link" onClick={() => moveTo('recovery')}>Lupa kode antrean?</button>}
       </nav>}
-      {screen === 'landing' ? <button className="button button-accent header-order-button" onClick={startOrdering}>Pesan Sekarang <span>↗</span></button> : screen === 'order-menu' ? <button className="cart-trigger" onClick={() => setCartOpen(true)} aria-label={`Buka keranjang, ${itemCount} item`}><span aria-hidden="true">▱</span><span className="cart-label">Keranjang</span><b className="cart-count">{itemCount}</b></button> : isMember ? <button className="account-chip" onClick={signOutMember}>Keluar</button> : sessionMode === 'guest' ? <button className="account-chip" onClick={() => moveTo('orders')}>Guest · Pesanan</button> : <button className="account-chip" onClick={startOrdering}>Pesan Sekarang</button>}
+      {screen === 'order-menu' ? (
+        <button className="cart-trigger" onClick={() => setCartOpen(true)} aria-label={`Buka keranjang, ${itemCount} item`}>
+          <span aria-hidden="true">▱</span><span className="cart-label">Keranjang</span><b className="cart-count">{itemCount}</b>
+        </button>
+      ) : isMember ? (
+        <button className="account-chip" onClick={signOutMember}>Keluar</button>
+      ) : sessionMode === 'guest' ? (
+        <button className="account-chip" onClick={() => moveTo('orders')}>Guest · Pesanan</button>
+      ) : null}
       <nav className="mobile-nav" aria-label="Navigasi ponsel">
-        {screen === 'landing' ? <><a className="mobile-nav-link" href="#about">Tentang</a><a className="mobile-nav-link" href="#location">Lokasi</a><button className="mobile-nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button><button className="mobile-nav-link active" onClick={startOrdering}>Pesan Sekarang</button></> : isMember ? <><button className="mobile-nav-link" onClick={() => moveTo('member-home')}>Beranda Member</button><button className="mobile-nav-link" onClick={() => moveTo('order-menu')}>Menu</button><button className="mobile-nav-link" onClick={() => moveTo('orders')}>Pesanan</button><button className="mobile-nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button><button className="mobile-nav-link" onClick={() => moveTo('member-points')}>Poin</button></> : <><button className="mobile-nav-link" onClick={() => moveTo('landing')}>Beranda</button><button className="mobile-nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button>{sessionMode === 'guest' && <button className="mobile-nav-link" onClick={() => moveTo('orders')}>Pesanan Saya</button>}{sessionMode === 'guest' && <button className="mobile-nav-link" onClick={() => moveTo('order-menu')}>Menu</button>}</>}
+        {screen === 'landing' ? (
+          <>
+            <a className="mobile-nav-link" href="#about">Tentang</a>
+            <a className="mobile-nav-link" href="#location">Lokasi</a>
+            <button className="mobile-nav-link" onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
+            <button className="mobile-nav-link mobile-nav-cta" onClick={startOrdering}>Pesan Sekarang</button>
+          </>
+        ) : isMember ? (
+          <>
+            <button className={`mobile-nav-link ${screen === 'member-home' ? 'active' : ''}`} onClick={() => moveTo('member-home')}>Beranda</button>
+            <button className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`} onClick={() => moveTo('order-menu')}>Menu</button>
+            <button className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`} onClick={() => moveTo('orders')}>Pesanan</button>
+            <button className={`mobile-nav-link ${screen === 'tracking' ? 'active' : ''}`} onClick={() => moveTo('tracking')}>Lacak</button>
+            <button className={`mobile-nav-link ${screen === 'member-points' ? 'active' : ''}`} onClick={() => moveTo('member-points')}>Poin</button>
+          </>
+        ) : (
+          <>
+            <button className="mobile-nav-link" onClick={() => moveTo('landing')}>Beranda</button>
+            <button className={`mobile-nav-link ${screen === 'tracking' ? 'active' : ''}`} onClick={() => moveTo('tracking')}>Lacak Pesanan</button>
+            {sessionMode === 'guest' && <button className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`} onClick={() => moveTo('orders')}>Pesanan Saya</button>}
+            {sessionMode === 'guest' && <button className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`} onClick={() => moveTo('order-menu')}>Menu</button>}
+            {sessionMode !== 'guest' && <button className="mobile-nav-link mobile-nav-cta" onClick={startOrdering}>Pesan Sekarang</button>}
+          </>
+        )}
       </nav>
     </header>
 
