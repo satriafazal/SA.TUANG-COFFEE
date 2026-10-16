@@ -1,0 +1,27 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env.local
+
+# Dependencies and generated build output
+backend/vendor/
+frontend/node_modules/
+frontend/dist/
+backend/storage/logs/*.log
+backend/storage/framework/cache/data/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/bootstrap/cache/*.php
+
+# Local data and runtime
+postgres-data/
+*.dump
+*.sql.gz
+*.sqlite
+*.sqlite*
+npm-debug.log*
+.DS_Store
+.idea/
+.vscode/
