@@ -49,10 +49,14 @@ class MenuController extends Controller
             ->where(function ($query) use ($now): void {
                 $query->whereNull('ends_at')->orWhere('ends_at', '>=', $now);
             })
-            ->with(['components.product:id,name,item_type,price,is_available'])
+            ->with([
+                'category:id,name,slug',
+                'components.product:id,name,item_type,price,is_available',
+            ])
             ->orderBy('name')
             ->get([
                 'id',
+                'category_id',
                 'name',
                 'slug',
                 'description',

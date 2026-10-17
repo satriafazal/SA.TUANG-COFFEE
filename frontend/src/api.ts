@@ -197,6 +197,8 @@ export function deleteAdminProduct(productId: number) {
 
 export type AdminBundle = {
   id: number
+  category_id?: number | null
+  category?: Pick<AdminCategory, 'id' | 'name' | 'slug' | 'sort_order'> | null
   name: string
   slug: string
   description: string | null
@@ -208,6 +210,7 @@ export type AdminBundle = {
   products: Array<{ id: number; name: string; price: string; item_type: string; is_available: boolean; pivot: { quantity: number } }>
 }
 export type AdminBundleInput = {
+  category_id?: number | null
   name: string
   slug?: string
   description: string | null

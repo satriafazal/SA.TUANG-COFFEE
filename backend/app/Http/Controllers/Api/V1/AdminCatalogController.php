@@ -294,9 +294,12 @@ class AdminCatalogController extends Controller
     public function bundles(): JsonResponse
     {
         $bundles = Bundle::query()
-            ->with(['products' => function ($query) {
-                $query->select('products.id', 'products.name', 'products.price', 'products.item_type', 'products.is_available');
-            }])
+            ->with([
+                'category:id,name,slug',
+                'products' => function ($query) {
+                    $query->select('products.id', 'products.name', 'products.price', 'products.item_type', 'products.is_available');
+                },
+            ])
             ->orderBy('name')
             ->get();
 
@@ -306,6 +309,7 @@ class AdminCatalogController extends Controller
     public function storeBundle(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:160'],
             'slug' => ['nullable', 'string', 'max:180'],
             'description' => ['nullable', 'string'],
@@ -338,7 +342,7 @@ class AdminCatalogController extends Controller
                 'components' => $syncData,
             ]);
 
-            return $bundle->load('products');
+            return $bundle->load(['category:id,name,slug', 'products']);
         }, 3);
 
         return response()->json(['bundle' => $bundle], 201);
@@ -347,6 +351,7 @@ class AdminCatalogController extends Controller
     public function updateBundle(Request $request, int $bundleId): JsonResponse
     {
         $data = $request->validate([
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:160'],
             'slug' => ['nullable', 'string', 'max:180'],
             'description' => ['nullable', 'string'],
@@ -382,7 +387,7 @@ class AdminCatalogController extends Controller
                 'components' => $syncData,
             ]);
 
-            return $bundle->fresh()->load('products');
+            return $bundle->fresh()->load(['category:id,name,slug', 'products']);
         }, 3);
 
         return response()->json(['bundle' => $bundle]);

@@ -61,6 +61,7 @@ class AdminManagementApiTest extends TestCase
         // Create bundle
         $response = $this->withHeader('Authorization', "Bearer {$this->adminToken}")
             ->postJson('/api/v1/admin/bundles', [
+                'category_id' => $category->id,
                 'name' => 'Paket Sarapan Hemat',
                 'description' => 'Kopi dan roti bakar lezat',
                 'price' => 30000,
@@ -72,6 +73,8 @@ class AdminManagementApiTest extends TestCase
 
         $response->assertCreated()
             ->assertJsonPath('bundle.name', 'Paket Sarapan Hemat')
+            ->assertJsonPath('bundle.category_id', $category->id)
+            ->assertJsonPath('bundle.category.name', 'Minuman Kopi')
             ->assertJsonCount(2, 'bundle.products');
 
         $bundleId = $response->json('bundle.id');
@@ -80,11 +83,13 @@ class AdminManagementApiTest extends TestCase
         $listResponse = $this->withHeader('Authorization', "Bearer {$this->adminToken}")
             ->getJson('/api/v1/admin/bundles');
         $listResponse->assertOk()
-            ->assertJsonCount(1, 'bundles');
+            ->assertJsonCount(1, 'bundles')
+            ->assertJsonPath('bundles.0.category.name', 'Minuman Kopi');
 
         // Update bundle
         $updateResponse = $this->withHeader('Authorization', "Bearer {$this->adminToken}")
             ->putJson("/api/v1/admin/bundles/{$bundleId}", [
+                'category_id' => $category->id,
                 'name' => 'Paket Sarapan Jumbo',
                 'price' => 32000,
                 'components' => [
@@ -93,6 +98,7 @@ class AdminManagementApiTest extends TestCase
             ]);
         $updateResponse->assertOk()
             ->assertJsonPath('bundle.name', 'Paket Sarapan Jumbo')
+            ->assertJsonPath('bundle.category_id', $category->id)
             ->assertJsonCount(1, 'bundle.products');
 
         // Delete bundle

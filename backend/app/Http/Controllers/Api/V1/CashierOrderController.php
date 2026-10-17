@@ -24,9 +24,12 @@ class CashierOrderController extends Controller
             ->get(['id', 'name', 'item_type', 'price', 'is_available']);
 
         $bundles = Bundle::query()
-            ->with(['components.product:id,name,price,item_type,is_available'])
+            ->with([
+                'category:id,name,slug',
+                'components.product:id,name,price,item_type,is_available',
+            ])
             ->orderBy('name')
-            ->get(['id', 'name', 'slug', 'description', 'price', 'is_active', 'image_path']);
+            ->get(['id', 'category_id', 'name', 'slug', 'description', 'price', 'is_active', 'image_path']);
 
         return response()->json([
             'products' => $products,

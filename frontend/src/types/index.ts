@@ -21,6 +21,8 @@ export type BundleComponentItem = {
 
 export type CustomerBundle = {
   id: number
+  category_id?: number | null
+  category?: Category | null
   name: string
   slug: string
   description: string | null
