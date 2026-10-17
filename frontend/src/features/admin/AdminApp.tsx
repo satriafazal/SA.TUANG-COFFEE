@@ -149,9 +149,10 @@ export default function AdminApp() {
   const [uploadError, setUploadError] = useState('')
   const [isDraggingFile, setIsDraggingFile] = useState(false)
   const [adjustModalOpen, setAdjustModalOpen] = useState(false)
-  const [imageTarget, setImageTarget] = useState<'product' | 'bundle'>('product')
+  const [imageTarget, setImageTarget] = useState<'product' | 'bundle' | 'banner'>('product')
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const bundleFileInputRef = useRef<HTMLInputElement | null>(null)
+  const bannerFileInputRef = useRef<HTMLInputElement | null>(null)
   const [categoryEditor, setCategoryEditor] = useState<AdminCategory | null | false>(false)
   const [categoryDraft, setCategoryDraft] = useState<CategoryDraft>(blankCategory)
   const [bundleEditor, setBundleEditor] = useState<AdminBundle | null | false>(false)
@@ -320,6 +321,7 @@ export default function AdminApp() {
     setError('')
     setUploadError('')
     setUploading(false)
+    setImageTarget('product')
     setProductDraft(
       product
         ? {
@@ -356,6 +358,9 @@ export default function AdminApp() {
       if (imageTarget === 'bundle') {
         setBundleDraft((prev) => ({ ...prev, image_path: res.path }))
         setNotice('Foto paket menu berhasil diunggah ke server.')
+      } else if (imageTarget === 'banner') {
+        setBannerDraft((prev) => ({ ...prev, image_path: res.path }))
+        setNotice('Gambar banner promosi berhasil diunggah ke server.')
       } else {
         setProductDraft((prev) => ({ ...prev, image_path: res.path }))
         setNotice('Foto produk berhasil diunggah ke server.')
@@ -366,6 +371,7 @@ export default function AdminApp() {
       setUploading(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
       if (bundleFileInputRef.current) bundleFileInputRef.current.value = ''
+      if (bannerFileInputRef.current) bannerFileInputRef.current.value = ''
     }
   }
 
@@ -390,6 +396,9 @@ export default function AdminApp() {
       if (imageTarget === 'bundle') {
         setBundleDraft((prev) => ({ ...prev, image_path: res.path }))
         setNotice('Gambar paket menu berhasil disesuaikan dan diunggah.')
+      } else if (imageTarget === 'banner') {
+        setBannerDraft((prev) => ({ ...prev, image_path: res.path }))
+        setNotice('Gambar banner promosi berhasil disesuaikan dan diunggah.')
       } else {
         setProductDraft((prev) => ({ ...prev, image_path: res.path }))
         setNotice('Gambar produk berhasil disesuaikan dan diunggah.')
@@ -405,6 +414,10 @@ export default function AdminApp() {
 
   async function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!productDraft.image_path.trim()) {
+      setError('Wajib melampirkan foto/gambar menu produk.')
+      return
+    }
     setBusyId(productEditor ? productEditor.id : -1)
     setError('')
     setNotice('')
@@ -531,6 +544,10 @@ export default function AdminApp() {
       setError('Paket harus memiliki minimal 1 komponen menu.')
       return
     }
+    if (!bundleDraft.image_path.trim()) {
+      setError('Wajib melampirkan foto/gambar paket menu.')
+      return
+    }
     setBusyId(bundleEditor ? bundleEditor.id : -1)
     setError('')
     setNotice('')
@@ -655,6 +672,8 @@ export default function AdminApp() {
   /* -------------------------------------------------------------------------- */
   function openBannerEditor(banner: AdminBanner | null = null) {
     setError('')
+    setUploadError('')
+    setImageTarget('banner')
     setBannerDraft(
       banner
         ? {
@@ -672,6 +691,10 @@ export default function AdminApp() {
 
   async function saveBanner(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!bannerDraft.image_path.trim()) {
+      setError('Wajib melampirkan gambar banner promosi.')
+      return
+    }
     setBusyId(bannerEditor ? bannerEditor.id : -1)
     setError('')
     setNotice('')
@@ -1602,7 +1625,9 @@ export default function AdminApp() {
                   onChange={handleProductImageUpload}
                 />
 
-                <span className="admin-field-label">Foto / Gambar Produk</span>
+                <span className="admin-field-label">
+                  Foto / Gambar Produk <span className="admin-required-badge">* Wajib</span>
+                </span>
 
                 {productDraft.image_path ? (
                   <div className="admin-image-preview-card">
@@ -1761,12 +1786,11 @@ export default function AdminApp() {
               </div>
 
               {/* Upload Foto Paket */}
-              <div className="admin-upload-field">
-                <span className="admin-upload-label">Foto Paket Menu</span>
+              <div className="admin-image-picker">
                 <input
-                  ref={bundleFileInputRef}
                   type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  ref={bundleFileInputRef}
+                  accept="image/*,.png,.jpg,.jpeg,.webp,.gif"
                   style={{ display: 'none' }}
                   onChange={(e) => {
                     const file = e.target.files?.[0]
@@ -1776,33 +1800,36 @@ export default function AdminApp() {
                     }
                   }}
                 />
+
+                <span className="admin-field-label">
+                  Foto / Gambar Paket Menu <span className="admin-required-badge">* Wajib</span>
+                </span>
+
                 {bundleDraft.image_path ? (
-                  <div className="admin-upload-preview-card">
-                    <div className="admin-upload-thumb">
-                      <img
-                        src={bundleDraft.image_path}
-                        alt="Preview paket"
-                        onError={(e) => {
-                          ;(e.currentTarget as HTMLImageElement).src =
-                            'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect width="100" height="100" fill="%23eee"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="%23aaa">Gambar</text></svg>'
-                        }}
-                      />
-                    </div>
-                    <div className="admin-upload-details">
-                      <strong>Foto paket tersimpan</strong>
-                      <small className="admin-upload-path">{bundleDraft.image_path}</small>
+                  <div className="admin-image-preview-card">
+                    <img
+                      src={bundleDraft.image_path}
+                      alt="Pratinjau gambar paket"
+                      className="admin-image-preview-thumb"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.opacity = '0.3'
+                      }}
+                    />
+                    <div className="admin-image-preview-meta">
+                      <span className="admin-preview-title">Foto Terpasang (Tersimpan di Server)</span>
+                      <code className="admin-preview-path" title={bundleDraft.image_path}>{bundleDraft.image_path}</code>
                     </div>
                     <button
                       type="button"
                       className="admin-icon-button"
-                      title="Sesuaikan posisi & zoom gambar"
+                      title="Sesuaikan gambar (crop / zoom / rotasi / filter)"
                       disabled={uploading}
                       onClick={() => {
                         setImageTarget('bundle')
                         setAdjustModalOpen(true)
                       }}
                     >
-                      ✂ Sesuaikan
+                      ✂️ Sesuaikan
                     </button>
                     <button
                       type="button"
@@ -1845,10 +1872,8 @@ export default function AdminApp() {
                       }
                     }}
                     onClick={() => {
-                      if (!uploading) {
-                        setImageTarget('bundle')
-                        bundleFileInputRef.current?.click()
-                      }
+                      setImageTarget('bundle')
+                      !uploading && bundleFileInputRef.current?.click()
                     }}
                   >
                     {uploading && imageTarget === 'bundle' ? (
@@ -1860,26 +1885,15 @@ export default function AdminApp() {
                       <div className="admin-upload-prompt">
                         <span className="admin-upload-icon">📤</span>
                         <div>
-                          <strong>Tarik & lepas foto di sini, atau klik untuk memilih file</strong>
+                          <strong>Tarik & lepas foto paket di sini, atau klik untuk memilih file</strong>
                           <small>Mendukung format JPG, PNG, WEBP, GIF (maksimal 10MB)</small>
                         </div>
-                        <button
-                          type="button"
-                          className="admin-button quiet"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setImageTarget('bundle')
-                            bundleFileInputRef.current?.click()
-                          }}
-                        >
-                          Pilih File Foto
-                        </button>
                       </div>
                     )}
                   </div>
                 )}
                 {uploadError && imageTarget === 'bundle' && (
-                  <p className="admin-alert error" role="alert">{uploadError}</p>
+                  <p className="admin-upload-error">{uploadError}</p>
                 )}
               </div>
 
@@ -2037,6 +2051,118 @@ export default function AdminApp() {
                 <label>Urutan sort<input type="number" min="0" value={bannerDraft.sort_order} onChange={(e) => setBannerDraft({ ...bannerDraft, sort_order: e.target.value })} required /></label>
               </div>
               <label className="admin-checkbox-single"><input type="checkbox" checked={bannerDraft.is_active} onChange={(e) => setBannerDraft({ ...bannerDraft, is_active: e.target.checked })} />Banner aktif</label>
+
+              {/* Upload Foto Banner */}
+              <div className="admin-image-picker">
+                <input
+                  type="file"
+                  ref={bannerFileInputRef}
+                  accept="image/*,.png,.jpg,.jpeg,.webp,.gif"
+                  style={{ display: 'none' }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setImageTarget('banner')
+                      void processUploadFile(file)
+                    }
+                  }}
+                />
+
+                <span className="admin-field-label">
+                  Gambar Banner Promosi <span className="admin-required-badge">* Wajib</span>
+                </span>
+
+                {bannerDraft.image_path ? (
+                  <div className="admin-image-preview-card">
+                    <img
+                      src={bannerDraft.image_path}
+                      alt="Pratinjau gambar banner"
+                      className="admin-image-preview-thumb"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.opacity = '0.3'
+                      }}
+                    />
+                    <div className="admin-image-preview-meta">
+                      <span className="admin-preview-title">Gambar Banner Terpasang</span>
+                      <code className="admin-preview-path" title={bannerDraft.image_path}>{bannerDraft.image_path}</code>
+                    </div>
+                    <button
+                      type="button"
+                      className="admin-icon-button"
+                      title="Sesuaikan gambar (crop / zoom / rotasi / filter)"
+                      disabled={uploading}
+                      onClick={() => {
+                        setImageTarget('banner')
+                        setAdjustModalOpen(true)
+                      }}
+                    >
+                      ✂️ Sesuaikan
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-icon-button"
+                      title="Ganti gambar dengan file lain"
+                      disabled={uploading}
+                      onClick={() => {
+                        setImageTarget('banner')
+                        bannerFileInputRef.current?.click()
+                      }}
+                    >
+                      🔄 Ganti
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-icon-button danger"
+                      title="Hapus gambar"
+                      disabled={uploading}
+                      onClick={() => setBannerDraft({ ...bannerDraft, image_path: '' })}
+                    >
+                      Hapus
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    className={`admin-upload-dropzone ${isDraggingFile && imageTarget === 'banner' ? 'drag-active' : ''}`}
+                    onDragOver={(e) => {
+                      e.preventDefault()
+                      setImageTarget('banner')
+                      setIsDraggingFile(true)
+                    }}
+                    onDragLeave={() => setIsDraggingFile(false)}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setIsDraggingFile(false)
+                      const file = e.dataTransfer.files?.[0]
+                      if (file) {
+                        setImageTarget('banner')
+                        void processUploadFile(file)
+                      }
+                    }}
+                    onClick={() => {
+                      setImageTarget('banner')
+                      !uploading && bannerFileInputRef.current?.click()
+                    }}
+                  >
+                    {uploading && imageTarget === 'banner' ? (
+                      <div className="admin-upload-status">
+                        <span className="admin-spinner" />
+                        <span>Mengunggah file ke server…</span>
+                      </div>
+                    ) : (
+                      <div className="admin-upload-prompt">
+                        <span className="admin-upload-icon">📤</span>
+                        <div>
+                          <strong>Tarik & lepas gambar banner di sini, atau klik untuk memilih file</strong>
+                          <small>Mendukung format JPG, PNG, WEBP, GIF (maksimal 10MB)</small>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {uploadError && imageTarget === 'banner' && (
+                  <p className="admin-upload-error">{uploadError}</p>
+                )}
+              </div>
               {error && <p className="admin-alert error" role="alert">{error}</p>}
               <div className="admin-modal-actions">
                 <button type="button" className="admin-button quiet" onClick={() => setBannerEditor(false)}>Batal</button>
@@ -2206,12 +2332,30 @@ export default function AdminApp() {
           </section>
         </div>
       )}
-      {/* MODAL: SESUAIKAN GAMBAR PRODUK / PAKET */}
-      {adjustModalOpen && (imageTarget === 'bundle' ? bundleDraft.image_path : productDraft.image_path) && (
+      {/* MODAL: SESUAIKAN GAMBAR PRODUK / PAKET / BANNER */}
+      {adjustModalOpen && (
+        imageTarget === 'bundle'
+          ? bundleDraft.image_path
+          : imageTarget === 'banner'
+            ? bannerDraft.image_path
+            : productDraft.image_path
+      ) && (
         <ImageAdjustModal
-          key={imageTarget === 'bundle' ? bundleDraft.image_path : productDraft.image_path}
+          key={
+            imageTarget === 'bundle'
+              ? bundleDraft.image_path
+              : imageTarget === 'banner'
+                ? bannerDraft.image_path
+                : productDraft.image_path
+          }
           isOpen={adjustModalOpen}
-          imageSrc={imageTarget === 'bundle' ? bundleDraft.image_path : productDraft.image_path}
+          imageSrc={
+            imageTarget === 'bundle'
+              ? bundleDraft.image_path
+              : imageTarget === 'banner'
+                ? bannerDraft.image_path
+                : productDraft.image_path
+          }
           onClose={() => setAdjustModalOpen(false)}
           onApply={handleApplyAdjustedImage}
         />

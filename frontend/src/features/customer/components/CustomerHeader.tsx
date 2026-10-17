@@ -57,9 +57,9 @@ export function CustomerHeader({
           <a className="nav-link" href="#about">
             Tentang
           </a>
-          <a className="nav-link" href="#menu-preview">
+          <button className="nav-link" onClick={() => moveTo('order-menu')}>
             Menu
-          </a>
+          </button>
           <a className="nav-link" href="#location">
             Lokasi
           </a>
@@ -89,6 +89,9 @@ export function CustomerHeader({
         <nav className="desktop-nav" aria-label="Navigasi pemesanan">
           <button className="nav-link" onClick={() => moveTo('landing')}>
             Beranda
+          </button>
+          <button className="nav-link" onClick={() => moveTo('order-menu')}>
+            Menu
           </button>
           <button className="nav-link" onClick={() => moveTo('tracking')}>
             Lacak Pesanan
@@ -137,9 +140,12 @@ export function CustomerHeader({
             <a className="mobile-nav-link" href="#about">
               Tentang
             </a>
-            <a className="mobile-nav-link" href="#menu-preview">
+            <button
+              className="mobile-nav-link"
+              onClick={() => moveTo('order-menu')}
+            >
               Menu
-            </a>
+            </button>
             <a className="mobile-nav-link" href="#location">
               Lokasi
             </a>

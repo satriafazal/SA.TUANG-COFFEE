@@ -140,6 +140,11 @@ function cartReducer(state: Record<string, CartLine>, action: CartAction): Recor
 }
 
 function startingScreen(session: PrototypeSession | null): Screen {
+  if (typeof window !== 'undefined') {
+    if (window.location.pathname === '/menu' || window.location.hash === '#menu') {
+      return 'order-menu'
+    }
+  }
   if (session?.mode === 'member') return 'member-home'
   if (session?.mode === 'guest') {
     return readPrototypeOrders().some(
@@ -323,16 +328,21 @@ export function CustomerApp() {
   }, [])
 
   function moveTo(screenName: Screen) {
+    if (screenName === 'order-menu' && !session) {
+      const guest = newGuestSession()
+      setSession(guest)
+    }
     setScreen(screenName)
     setAuthError('')
     setAuthNotice('')
   }
 
   function startOrdering() {
-    if (session?.mode === 'member') moveTo('member-home')
-    else if (session?.mode === 'guest') {
-      moveTo(currentOrders.length ? 'orders' : 'order-menu')
-    } else moveTo('identity')
+    if (!session) {
+      const guest = newGuestSession()
+      setSession(guest)
+    }
+    moveTo('order-menu')
   }
 
   function chooseGuest() {
@@ -605,6 +615,7 @@ export function CustomerApp() {
           <LandingPage
             banners={banners}
             menu={menu}
+            bundles={bundles}
             loading={loading}
             loadError={loadError}
             startOrdering={startOrdering}
