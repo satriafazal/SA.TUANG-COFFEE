@@ -15,7 +15,7 @@ interface LandingPageProps {
 export function LandingPage({
   banners,
   menu,
-  bundles = [],
+  bundles: _bundles = [],
   loading,
   loadError,
   startOrdering,
@@ -127,101 +127,35 @@ export function LandingPage({
         ) : loadError ? (
           <div className="notice error">Menu belum dapat dimuat. {loadError}</div>
         ) : (
-          <>
-            {bundles.length > 0 && (
-              <div className="landing-bundle-section">
-                <div className="landing-section-subhead">
-                  <span className="eyebrow light">🎁 PAKET HEMAT PILIHAN</span>
-                  <p>Kombinasi menu hemat spesial untuk waktu jeda kamu.</p>
+          <div className="landing-menu-grid">
+            {menu.slice(0, 3).map((product, index) => (
+              <article
+                className="preview-card"
+                key={product.id}
+                onClick={startOrdering}
+                style={{ cursor: 'pointer' }}
+              >
+                <div className={`preview-visual visual-${index % 6}`}>
+                  {product.image_path ? (
+                    <img
+                      src={product.image_path}
+                      alt={product.name}
+                      onError={(e) => {
+                        ;(e.currentTarget as HTMLImageElement).style.display =
+                          'none'
+                      }}
+                    />
+                  ) : null}
+                  <span>{product.item_type === 'drink' ? '☕' : '🥐'}</span>
                 </div>
-                <div className="landing-menu-grid">
-                  {bundles.slice(0, 3).map((bundle, index) => (
-                    <article
-                      className="preview-card bundle-preview-card"
-                      key={`bundle-${bundle.id}`}
-                      onClick={startOrdering}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      <div className={`preview-visual visual-${(index + 3) % 6}`}>
-                        {bundle.image_path ? (
-                          <img
-                            src={bundle.image_path}
-                            alt={bundle.name}
-                            onError={(e) => {
-                              ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                            }}
-                          />
-                        ) : null}
-                        <span className="product-emoji" aria-hidden="true">🎁</span>
-                      </div>
-                      <div className="preview-info">
-                        <span className="bundle-badge">
-                          {bundle.category?.name ? `PAKET · ${bundle.category.name.toUpperCase()}` : 'PAKET HEMAT'}
-                        </span>
-                        <h3>{bundle.name}</h3>
-                        <p>{bundle.description || 'Kombinasi menu favorit dengan harga lebih hemat.'}</p>
-                        {bundle.components && bundle.components.length > 0 && (
-                          <div className="bundle-contents">
-                            <strong>Termasuk:</strong>
-                            <span>
-                              {bundle.components
-                                .map((c) => `${c.quantity}x ${c.product?.name ?? 'Menu'}`)
-                                .join(', ')}
-                            </span>
-                          </div>
-                        )}
-                        <div className="preview-price-row">
-                          <strong className="preview-price">Rp {Number(bundle.price).toLocaleString('id-ID')}</strong>
-                          <span className="preview-cta">Pesan Paket ↗</span>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                <div className="preview-info">
+                  <small>{product.category?.name ?? 'Menu'}</small>
+                  <h3>{product.name}</h3>
+                  <p>{product.description || 'Sajian dari SA.TUANG COFFEE.'}</p>
                 </div>
-              </div>
-            )}
-
-            <div className="landing-products-section">
-              {bundles.length > 0 && (
-                <div className="landing-section-subhead">
-                  <span className="eyebrow light">☕ PILIHAN MENU FAVORIT</span>
-                  <p>Pilihan kopi dan sajian teman ngopi harian.</p>
-                </div>
-              )}
-              <div className="landing-menu-grid">
-                {menu.slice(0, 3).map((product, index) => (
-                  <article
-                    className="preview-card"
-                    key={product.id}
-                    onClick={startOrdering}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <div className={`preview-visual visual-${index % 6}`}>
-                      {product.image_path ? (
-                        <img
-                          src={product.image_path}
-                          alt={product.name}
-                          onError={(e) => {
-                            ;(e.currentTarget as HTMLImageElement).style.display = 'none'
-                          }}
-                        />
-                      ) : null}
-                      <span>{product.item_type === 'drink' ? '☕' : '🥐'}</span>
-                    </div>
-                    <div className="preview-info">
-                      <small>{product.category?.name ?? 'Menu'}</small>
-                      <h3>{product.name}</h3>
-                      <p>{product.description || 'Sajian dari SA.TUANG COFFEE.'}</p>
-                      <div className="preview-price-row">
-                        <strong className="preview-price">Rp {Number(product.price).toLocaleString('id-ID')}</strong>
-                        <span className="preview-cta">Pesan ↗</span>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </>
+              </article>
+            ))}
+          </div>
         )}
       </section>
 

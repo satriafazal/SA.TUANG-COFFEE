@@ -365,7 +365,7 @@ export default function CashierApp() {
                     <article className={`cashier-product-card ${!bundle.is_active ? 'unavailable' : ''}`} key={`bundle-${bundle.id}`}>
                       <div className="cashier-product-icon">🎁</div>
                       <div className="cashier-product-content">
-                        <span className="cashier-eyebrow">PAKET HEMAT</span>
+                        <span className="cashier-eyebrow">{bundle.category?.name ? bundle.category.name.toUpperCase() : 'PAKET MENU'}</span>
                         <h3>{bundle.name}</h3>
                         {bundle.components && bundle.components.length > 0 && (
                           <small className="cashier-bundle-hint">

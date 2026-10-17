@@ -1295,7 +1295,7 @@ export default function AdminApp() {
                       </tr>
                     ))}
                     {!bundles.length && (
-                      <tr><td colSpan={6} className="admin-empty-cell">Belum ada paket menu. Klik tombol “＋ Tambah paket” untuk membuat paket hemat.</td></tr>
+                      <tr><td colSpan={6} className="admin-empty-cell">Belum ada paket menu. Klik tombol “＋ Tambah paket” untuk membuat paket menu.</td></tr>
                     )}
                   </tbody>
                 </table>

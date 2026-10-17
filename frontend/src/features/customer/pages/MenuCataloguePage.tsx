@@ -45,7 +45,7 @@ export function MenuCataloguePage({
         .includes(query.toLowerCase())
       if (!matches) return false
 
-      if (category === 'semua' || category === 'paket-hemat') return true
+      if (category === 'semua') return true
 
       const currentCat = categories.find((c) => c.slug === category)
       if (b.category?.slug && b.category.slug === category) return true
@@ -55,10 +55,7 @@ export function MenuCataloguePage({
     })
   }, [bundles, query, category, categories])
 
-  const totalVisibleItems =
-    category === 'paket-hemat'
-      ? categoryBundles.length
-      : categoryBundles.length + filtered.length
+  const totalVisibleItems = categoryBundles.length + filtered.length
 
   return (
     <section className="catalogue-page">
@@ -126,18 +123,6 @@ export function MenuCataloguePage({
           >
             Semua menu
           </button>
-          {bundles.length > 0 && (
-            <button
-              className={
-                category === 'paket-hemat'
-                  ? 'category-chip selected'
-                  : 'category-chip'
-              }
-              onClick={() => setCategory('paket-hemat')}
-            >
-              🎁 Paket Menu ({bundles.length})
-            </button>
-          )}
           {categories.map((item) => (
             <button
               key={item.id}
@@ -167,142 +152,115 @@ export function MenuCataloguePage({
             </button>
           </div>
         ) : totalVisibleItems > 0 ? (
-          <>
-            {categoryBundles.length > 0 && (
-              <div className="catalogue-section">
-                <div className="catalogue-section-title">
-                  <span>🎁 PAKET MENU HEMAT</span>
-                  <small>{categoryBundles.length} paket tersedia</small>
-                </div>
-                <div className="product-grid">
-                  {categoryBundles.map((bundle, index) => {
-                    const isSoldOut =
-                      !bundle.is_active ||
-                      (bundle.components &&
-                        bundle.components.some(
-                          (c) => c.product && !c.product.is_available,
-                        ))
-                    return (
-                      <article className="product-card bundle-card" key={`bundle-${bundle.id}`}>
-                        <div className={`product-visual visual-${(index + 3) % 6}`}>
-                          {bundle.image_path ? (
-                            <img
-                              src={bundle.image_path}
-                              alt={bundle.name}
-                              onError={(e) => {
-                                ;(e.currentTarget as HTMLImageElement).style.display =
-                                  'none'
-                              }}
-                            />
-                          ) : null}
-                          <span className="product-emoji" aria-hidden="true">
-                            🎁
+          <div className="product-grid">
+            {categoryBundles.map((bundle, index) => {
+                const isSoldOut =
+                  !bundle.is_active ||
+                  (bundle.components &&
+                    bundle.components.some(
+                      (c) => c.product && !c.product.is_available,
+                    ))
+                return (
+                  <article className="product-card bundle-card" key={`bundle-${bundle.id}`}>
+                    <div className={`product-visual visual-${(index + 3) % 6}`}>
+                      {bundle.image_path ? (
+                        <img
+                          src={bundle.image_path}
+                          alt={bundle.name}
+                          onError={(e) => {
+                            ;(e.currentTarget as HTMLImageElement).style.display =
+                              'none'
+                          }}
+                        />
+                      ) : null}
+                      <span className="product-emoji" aria-hidden="true">
+                        🎁
+                      </span>
+                    </div>
+                    <div className="product-info">
+                      <div className="product-category">
+                        {bundle.category?.name ?? 'Paket'}
+                      </div>
+                      <h3>{bundle.name}</h3>
+                      <p>
+                        {bundle.description ||
+                          'Kombinasi hemat menu favorit pilihan kami.'}
+                      </p>
+                      {bundle.components && bundle.components.length > 0 && (
+                        <div className="bundle-contents">
+                          <strong>Termasuk:</strong>
+                          <span>
+                            {bundle.components
+                              .map(
+                                (c) =>
+                                  `${c.quantity}x ${c.product?.name ?? 'Menu'}`,
+                              )
+                              .join(', ')}
                           </span>
                         </div>
-                        <div className="product-info">
-                          <div className="product-category bundle-badge">
-                            {bundle.category?.name ? `PAKET · ${bundle.category.name.toUpperCase()}` : 'PAKET HEMAT'}
-                          </div>
-                          <h3>{bundle.name}</h3>
-                          <p>
-                            {bundle.description ||
-                              'Kombinasi hemat menu favorit pilihan kami.'}
-                          </p>
-                          {bundle.components && bundle.components.length > 0 && (
-                            <div className="bundle-contents">
-                              <strong>Termasuk:</strong>
-                              <span>
-                                {bundle.components
-                                  .map(
-                                    (c) =>
-                                      `${c.quantity}x ${c.product?.name ?? 'Menu'}`,
-                                  )
-                                  .join(', ')}
-                              </span>
-                            </div>
-                          )}
-                          <div className="product-buy">
-                            <strong>{rupiah(bundle.price)}</strong>
-                            <button
-                              className="add-button"
-                              disabled={isSoldOut}
-                              onClick={() => dispatch({ type: 'add_bundle', bundle })}
-                              aria-label={`Tambah ${bundle.name} ke keranjang`}
-                            >
-                              {isSoldOut ? 'Habis' : '+'}
-                            </button>
-                          </div>
-                        </div>
-                      </article>
-                    )
-                  })}
+                      )}
+                      <div className="product-buy">
+                        <strong>{rupiah(bundle.price)}</strong>
+                        <button
+                          className="add-button"
+                          disabled={isSoldOut}
+                          onClick={() => dispatch({ type: 'add_bundle', bundle })}
+                          aria-label={`Tambah ${bundle.name} ke keranjang`}
+                        >
+                          {isSoldOut ? 'Habis' : '+'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            {filtered.map((product, index) => (
+              <article className="product-card" key={product.id}>
+                <div className={`product-visual visual-${index % 6}`}>
+                  {product.image_path ? (
+                    <img
+                      src={product.image_path}
+                      alt={product.name}
+                      onError={(e) => {
+                        ;(e.currentTarget as HTMLImageElement).style.display =
+                          'none'
+                      }}
+                    />
+                  ) : null}
+                  <span className="product-emoji" aria-hidden="true">
+                    {product.item_type === 'drink'
+                      ? product.name.toLowerCase().includes('matcha')
+                        ? '🍵'
+                        : '☕'
+                      : '🥐'}
+                  </span>
                 </div>
-              </div>
-            )}
-
-            {category !== 'paket-hemat' && filtered.length > 0 && (
-              <div className="catalogue-section">
-                {categoryBundles.length > 0 && (
-                  <div className="catalogue-section-title">
-                    <span>☕ MENU SATUAN</span>
-                    <small>{filtered.length} menu tersedia</small>
+                <div className="product-info">
+                  <div className="product-category">
+                    {product.category?.name ??
+                      (product.item_type === 'drink' ? 'Minuman' : 'Makanan')}
                   </div>
-                )}
-                <div className="product-grid">
-                  {filtered.map((product, index) => (
-                    <article className="product-card" key={product.id}>
-                      <div className={`product-visual visual-${index % 6}`}>
-                        {product.image_path ? (
-                          <img
-                            src={product.image_path}
-                            alt={product.name}
-                            onError={(e) => {
-                              ;(e.currentTarget as HTMLImageElement).style.display =
-                                'none'
-                            }}
-                          />
-                        ) : null}
-                        <span className="product-emoji" aria-hidden="true">
-                          {product.item_type === 'drink'
-                            ? product.name.toLowerCase().includes('matcha')
-                              ? '🍵'
-                              : '☕'
-                            : '🥐'}
-                        </span>
-                      </div>
-                      <div className="product-info">
-                        <div className="product-category">
-                          {product.category?.name ??
-                            (product.item_type === 'drink' ? 'Minuman' : 'Makanan')}
-                        </div>
-                        <h3>{product.name}</h3>
-                        <p>
-                          {product.description || 'Diracik untuk dinikmati kapan saja.'}
-                        </p>
-                        <div className="product-buy">
-                          <strong>{rupiah(product.price)}</strong>
-                          <button
-                            className="add-button"
-                            disabled={!product.is_available}
-                            onClick={() => dispatch({ type: 'add', product })}
-                            aria-label={`Tambah ${product.name} ke keranjang`}
-                          >
-                            {product.is_available ? '+' : 'Habis'}
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                  <h3>{product.name}</h3>
+                  <p>
+                    {product.description || 'Diracik untuk dinikmati kapan saja.'}
+                  </p>
+                  <div className="product-buy">
+                    <strong>{rupiah(product.price)}</strong>
+                    <button
+                      className="add-button"
+                      disabled={!product.is_available}
+                      onClick={() => dispatch({ type: 'add', product })}
+                      aria-label={`Tambah ${product.name} ke keranjang`}
+                    >
+                      {product.is_available ? '+' : 'Habis'}
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="notice">
-            {category === 'paket-hemat'
-              ? 'Paket menu belum tersedia atau tidak cocok dengan pencarian.'
-              : 'Menu belum tersedia di kategori ini.'}
+              </article>
+            ))}
           </div>
+        ) : (
+          <div className="notice">Menu belum tersedia di kategori ini.</div>
         )}
 
         <p className="menu-footnote">
