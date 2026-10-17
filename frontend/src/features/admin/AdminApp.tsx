@@ -1762,9 +1762,21 @@ export default function AdminApp() {
               <button className="admin-close" aria-label="Tutup" onClick={() => setBundleEditor(false)}>×</button>
             </div>
             <form className="admin-form" onSubmit={saveBundle}>
+              <label>
+                Nama paket
+                <input
+                  autoFocus
+                  maxLength={160}
+                  placeholder="Contoh: Paket Ngopi Sore"
+                  value={bundleDraft.name}
+                  onChange={(e) => setBundleDraft({ ...bundleDraft, name: e.target.value })}
+                  required
+                />
+              </label>
+
               <div className="admin-form-row">
-                <label>Nama paket<input autoFocus maxLength={160} placeholder="Contoh: Paket Ngopi Sore" value={bundleDraft.name} onChange={(e) => setBundleDraft({ ...bundleDraft, name: e.target.value })} required /></label>
-                <label>Kategori paket
+                <label>
+                  Kategori paket
                   <select
                     value={bundleDraft.category_id}
                     onChange={(e) => setBundleDraft({ ...bundleDraft, category_id: e.target.value })}
@@ -1777,13 +1789,30 @@ export default function AdminApp() {
                     ))}
                   </select>
                 </label>
+
+                <label>
+                  Harga paket (Rp)
+                  <input
+                    type="number"
+                    min="0"
+                    step="500"
+                    placeholder="Contoh: 35000"
+                    value={bundleDraft.price}
+                    onChange={(e) => setBundleDraft({ ...bundleDraft, price: e.target.value })}
+                    required
+                  />
+                </label>
               </div>
-              <label>Deskripsi<textarea rows={2} placeholder="Keterangan paket…" value={bundleDraft.description} onChange={(e) => setBundleDraft({ ...bundleDraft, description: e.target.value })} /></label>
-              
-              <div className="admin-form-row">
-                <label>Harga paket (Rp)<input type="number" min="0" step="500" value={bundleDraft.price} onChange={(e) => setBundleDraft({ ...bundleDraft, price: e.target.value })} required /></label>
-                <label className="admin-checkbox-single"><input type="checkbox" checked={bundleDraft.is_active} onChange={(e) => setBundleDraft({ ...bundleDraft, is_active: e.target.checked })} />Paket aktif</label>
-              </div>
+
+              <label>
+                Deskripsi paket
+                <textarea
+                  rows={2}
+                  placeholder="Keterangan singkat mengenai isi paket atau penawaran hemat…"
+                  value={bundleDraft.description}
+                  onChange={(e) => setBundleDraft({ ...bundleDraft, description: e.target.value })}
+                />
+              </label>
 
               {/* Upload Foto Paket */}
               <div className="admin-image-picker">
@@ -1801,9 +1830,12 @@ export default function AdminApp() {
                   }}
                 />
 
-                <span className="admin-field-label">
-                  Foto / Gambar Paket Menu <span className="admin-required-badge">* Wajib</span>
-                </span>
+                <div className="admin-image-picker-header">
+                  <span className="admin-field-label">
+                    Foto / Gambar Paket Menu <span className="admin-required-badge">* Wajib</span>
+                  </span>
+                  <small style={{ fontSize: '9px', color: '#7a8076' }}>Rasio 4:3 (JPG, PNG, WEBP)</small>
+                </div>
 
                 {bundleDraft.image_path ? (
                   <div className="admin-image-preview-card">
@@ -1819,39 +1851,41 @@ export default function AdminApp() {
                       <span className="admin-preview-title">Foto Terpasang (Tersimpan di Server)</span>
                       <code className="admin-preview-path" title={bundleDraft.image_path}>{bundleDraft.image_path}</code>
                     </div>
-                    <button
-                      type="button"
-                      className="admin-icon-button"
-                      title="Sesuaikan gambar (crop / zoom / rotasi / filter)"
-                      disabled={uploading}
-                      onClick={() => {
-                        setImageTarget('bundle')
-                        setAdjustModalOpen(true)
-                      }}
-                    >
-                      ✂️ Sesuaikan
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-icon-button"
-                      title="Ganti foto dengan file lain"
-                      disabled={uploading}
-                      onClick={() => {
-                        setImageTarget('bundle')
-                        bundleFileInputRef.current?.click()
-                      }}
-                    >
-                      🔄 Ganti
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-icon-button danger"
-                      title="Hapus gambar"
-                      disabled={uploading}
-                      onClick={() => setBundleDraft({ ...bundleDraft, image_path: '' })}
-                    >
-                      Hapus
-                    </button>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="admin-icon-button"
+                        title="Sesuaikan gambar (crop / zoom / rotasi / filter)"
+                        disabled={uploading}
+                        onClick={() => {
+                          setImageTarget('bundle')
+                          setAdjustModalOpen(true)
+                        }}
+                      >
+                        ✂️ Sesuaikan
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-icon-button"
+                        title="Ganti foto dengan file lain"
+                        disabled={uploading}
+                        onClick={() => {
+                          setImageTarget('bundle')
+                          bundleFileInputRef.current?.click()
+                        }}
+                      >
+                        🔄 Ganti
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-icon-button danger"
+                        title="Hapus gambar"
+                        disabled={uploading}
+                        onClick={() => setBundleDraft({ ...bundleDraft, image_path: '' })}
+                      >
+                        Hapus
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div
@@ -1900,8 +1934,13 @@ export default function AdminApp() {
               {/* Komponen Builder */}
               <div className="bundle-builder">
                 <div className="bundle-builder-head">
-                  <h4>Komponen menu paket</h4>
-                  <button type="button" className="admin-button quiet" onClick={addBundleComponent} style={{ minHeight: '30px', padding: '0 8px', fontSize: '9px' }}>
+                  <div>
+                    <h4>Komponen menu paket</h4>
+                    <small style={{ fontSize: '9px', color: '#7a8076' }}>
+                      Pilih menu dan jumlah porsi yang termasuk dalam paket ini
+                    </small>
+                  </div>
+                  <button type="button" className="admin-button quiet" onClick={addBundleComponent} style={{ minHeight: '30px', padding: '0 10px', fontSize: '9.5px', fontWeight: 700 }}>
                     ＋ Tambah item menu
                   </button>
                 </div>
@@ -1924,21 +1963,41 @@ export default function AdminApp() {
                       value={comp.quantity}
                       onChange={(e) => updateBundleComponent(idx, comp.product_id, Number(e.target.value))}
                       title="Jumlah porsi"
+                      placeholder="Porsi"
                     />
                     <button type="button" className="bundle-item-del" onClick={() => removeBundleComponent(idx)} title="Hapus komponen">×</button>
                   </div>
                 ))}
                 {!bundleDraft.components.length && (
-                  <div style={{ color: '#888', fontSize: '10px', textAlign: 'center', padding: '10px 0' }}>
+                  <div style={{ color: '#888', fontSize: '10px', textAlign: 'center', padding: '12px 0' }}>
                     Belum ada menu yang dimasukkan ke dalam paket. Klik tombol “＋ Tambah item menu”.
                   </div>
                 )}
                 {bundleDraft.components.length > 0 && (
                   <div className="bundle-summary">
-                    <span>Total nilai satuan asli: <b>{currency(bundleCalculatedOriginalPrice)}</b></span>
-                    <span>Harga paket: <b>{currency(bundleDraft.price || 0)}</b> {Number(bundleDraft.price) < bundleCalculatedOriginalPrice && <small>(Hemat {currency(bundleCalculatedOriginalPrice - Number(bundleDraft.price))})</small>}</span>
+                    <span>Nilai normal menu: <b>{currency(bundleCalculatedOriginalPrice)}</b></span>
+                    <span>
+                      Harga paket: <b>{currency(bundleDraft.price || 0)}</b>{' '}
+                      {Number(bundleDraft.price) < bundleCalculatedOriginalPrice && (
+                        <span className="admin-badge" style={{ background: '#d4ecd5', color: '#1d5a23', marginLeft: '6px' }}>
+                          Hemat {currency(bundleCalculatedOriginalPrice - Number(bundleDraft.price))}
+                        </span>
+                      )}
+                    </span>
                   </div>
                 )}
+              </div>
+
+              {/* Status Aktif */}
+              <div className="admin-check-grid">
+                <label className="admin-checkbox-single">
+                  <input
+                    type="checkbox"
+                    checked={bundleDraft.is_active}
+                    onChange={(e) => setBundleDraft({ ...bundleDraft, is_active: e.target.checked })}
+                  />
+                  <span><b>Paket aktif</b> — Tampilkan di katalog menu dan siap dipesan pelanggan & kasir</span>
+                </label>
               </div>
 
               {error && <p className="admin-alert error" role="alert">{error}</p>}
