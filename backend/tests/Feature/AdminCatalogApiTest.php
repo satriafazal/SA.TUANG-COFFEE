@@ -157,4 +157,40 @@ class AdminCatalogApiTest extends TestCase
         ])->assertUnprocessable()
             ->assertJsonValidationErrors(['item_type', 'price']);
     }
+    public function test_admin_can_upload_product_image(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+
+        $file = \Illuminate\Http\UploadedFile::fake()->create('coffee.jpg', 100, 'image/jpeg');
+
+        $response = $this->postJson('/api/v1/admin/upload', [
+            'image' => $file,
+        ])->assertCreated()
+            ->assertJsonStructure(['path', 'url', 'filename']);
+
+        $path = str_replace('/storage/', '', $response->json('path'));
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_admin_can_import_image_from_url(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+        \Illuminate\Support\Facades\Http::fake([
+            'https://external.com/sample.jpg' => \Illuminate\Support\Facades\Http::response('fake-image-bytes', 200, [
+                'Content-Type' => 'image/jpeg',
+            ]),
+        ]);
+
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+
+        $response = $this->postJson('/api/v1/admin/import-url', [
+            'url' => 'https://external.com/sample.jpg',
+        ])->assertCreated()
+            ->assertJsonStructure(['path', 'url', 'filename']);
+
+        $path = str_replace('/storage/', '', $response->json('path'));
+        \Illuminate\Support\Facades\Storage::disk('public')->assertExists($path);
+    }
 }
+

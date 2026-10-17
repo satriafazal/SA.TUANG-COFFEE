@@ -29,6 +29,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/products', [AdminCatalogController::class, 'storeProduct'])->name('api.v1.admin.products.store');
         Route::put('/products/{productId}', [AdminCatalogController::class, 'updateProduct'])->name('api.v1.admin.products.update');
         Route::delete('/products/{productId}', [AdminCatalogController::class, 'destroyProduct'])->name('api.v1.admin.products.destroy');
+        Route::post('/upload', [AdminCatalogController::class, 'uploadImage'])->name('api.v1.admin.upload');
+        Route::post('/import-url', [AdminCatalogController::class, 'importImageUrl'])->name('api.v1.admin.import-url');
 
         Route::get('/bundles', [AdminCatalogController::class, 'bundles'])->name('api.v1.admin.bundles.index');
         Route::post('/bundles', [AdminCatalogController::class, 'storeBundle'])->name('api.v1.admin.bundles.store');

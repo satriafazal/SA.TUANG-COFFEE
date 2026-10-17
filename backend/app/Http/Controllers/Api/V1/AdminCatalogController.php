@@ -16,6 +16,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -183,6 +185,106 @@ class AdminCatalogController extends Controller
         }, 3);
 
         return response()->json([], 204);
+    }
+
+    public function uploadImage(Request $request): JsonResponse
+    {
+        $request->validate([
+            'image' => ['required', 'file', 'mimes:jpeg,png,jpg,webp,gif,bmp,jfif,avif', 'max:10240'],
+        ]);
+
+        $file = $request->file('image');
+        $extension = $file->getClientOriginalExtension() ?: 'jpg';
+        $filename = Str::random(24) . '.' . strtolower($extension);
+        $path = $file->storeAs('products', $filename, 'public');
+
+        return response()->json([
+            'path' => '/storage/' . $path,
+            'url' => asset('storage/' . $path),
+            'filename' => $filename,
+        ], 201);
+    }
+
+    public function importImageUrl(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'url' => ['required', 'string', 'url', 'max:2048'],
+        ]);
+
+        $url = $data['url'];
+        $scheme = parse_url($url, PHP_URL_SCHEME);
+        if (!in_array(strtolower($scheme ?? ''), ['http', 'https'], true)) {
+            return response()->json([
+                'message' => 'Protokol URL tidak didukung. Gunakan HTTP atau HTTPS.',
+            ], 422);
+        }
+
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders([
+                    'User-Agent' => 'Mozilla/5.0 (compatible; SATUANG-Catalog-Importer/1.0)',
+                    'Accept' => 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                ])
+                ->get($url);
+
+            if (!$response->successful()) {
+                return response()->json([
+                    'message' => "Gagal mengunduh gambar dari URL eksternal (status {$response->status()}).",
+                ], 422);
+            }
+
+            $contentType = strtolower($response->header('Content-Type') ?? '');
+            $validTypes = [
+                'image/jpeg' => 'jpg',
+                'image/jpg'  => 'jpg',
+                'image/png'  => 'png',
+                'image/webp' => 'webp',
+                'image/gif'  => 'gif',
+                'image/avif' => 'avif',
+            ];
+
+            $extension = null;
+            foreach ($validTypes as $mime => $ext) {
+                if (str_contains($contentType, $mime)) {
+                    $extension = $ext;
+                    break;
+                }
+            }
+
+            if (!$extension) {
+                $path = parse_url($url, PHP_URL_PATH);
+                $pathExt = strtolower(pathinfo($path ?? '', PATHINFO_EXTENSION));
+                if (in_array($pathExt, ['jpg', 'jpeg', 'png', 'webp', 'gif', 'avif'], true)) {
+                    $extension = $pathExt === 'jpeg' ? 'jpg' : $pathExt;
+                }
+            }
+
+            if (!$extension) {
+                return response()->json([
+                    'message' => 'Konten dari URL bukan format gambar yang didukung (JPG, PNG, WEBP, GIF).',
+                ], 422);
+            }
+
+            $body = $response->body();
+            if (strlen($body) > 10 * 1024 * 1024) {
+                return response()->json([
+                    'message' => 'Ukuran gambar dari URL melebihi batas 10MB.',
+                ], 422);
+            }
+
+            $filename = Str::random(24) . '.' . $extension;
+            Storage::disk('public')->put('products/' . $filename, $body);
+
+            return response()->json([
+                'path' => '/storage/products/' . $filename,
+                'url' => asset('storage/products/' . $filename),
+                'filename' => $filename,
+            ], 201);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'Gagal mengambil gambar dari URL: ' . $e->getMessage(),
+            ], 422);
+        }
     }
 
     /* -------------------------------------------------------------------------- */

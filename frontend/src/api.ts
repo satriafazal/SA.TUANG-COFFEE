@@ -375,3 +375,33 @@ export function updatePreparationGroupStatus(orderNumber: string, itemType: stri
 export function completeCashierOrder(orderNumber: string) {
   return request<{ order: StaffOrder }>(`/cashier/orders/${encodeURIComponent(orderNumber)}/complete`, { method: 'POST' })
 }
+
+export async function uploadAdminImage(file: File): Promise<{ path: string; url: string; filename: string }> {
+  const token = localStorage.getItem('satuang-token')
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const response = await fetch(`${API_ROOT}/admin/upload`, {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: formData,
+  })
+
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    const firstError = Object.values(body.errors ?? {}).flat()[0]
+    throw new Error(firstError?.toString() ?? body.message ?? 'Gagal mengunggah gambar.')
+  }
+  return body as { path: string; url: string; filename: string }
+}
+
+export function importAdminImageUrl(url: string): Promise<{ path: string; url: string; filename: string }> {
+  return request<{ path: string; url: string; filename: string }>('/admin/import-url', {
+    method: 'POST',
+    body: JSON.stringify({ url }),
+  })
+}
+
