@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Models\Bundle;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
@@ -22,7 +23,15 @@ class CashierOrderController extends Controller
             ->orderBy('name')
             ->get(['id', 'name', 'item_type', 'price', 'is_available']);
 
-        return response()->json(['products' => $products]);
+        $bundles = Bundle::query()
+            ->with(['components.product:id,name,price,item_type,is_available'])
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'description', 'price', 'is_active', 'image_path']);
+
+        return response()->json([
+            'products' => $products,
+            'bundles' => $bundles,
+        ]);
     }
 
     public function updateProductAvailability(Request $request, int $productId): JsonResponse
@@ -41,6 +50,23 @@ class CashierOrderController extends Controller
         }, 3);
 
         return response()->json(['product' => $product]);
+    }
+
+    public function updateBundleAvailability(Request $request, int $bundleId): JsonResponse
+    {
+        $data = $request->validate(['is_active' => ['required', 'boolean']]);
+
+        $bundle = DB::transaction(function () use ($bundleId, $data): Bundle {
+            $bundle = Bundle::query()
+                ->whereKey($bundleId)
+                ->lockForUpdate()
+                ->firstOrFail();
+            $bundle->update(['is_active' => $data['is_active']]);
+
+            return $bundle->fresh()->load(['components.product:id,name,price,item_type,is_available']);
+        }, 3);
+
+        return response()->json(['bundle' => $bundle]);
     }
 
     public function index(Request $request): JsonResponse

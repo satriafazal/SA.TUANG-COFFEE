@@ -851,16 +851,119 @@ a {
   text-align: center;
   font-size: 11px;
 }
-.cart-total {
+.cart-bundle-items {
+  display: block;
+  font-size: 10px;
+  color: var(--muted, #666);
+  margin-top: 2px;
+  font-style: italic;
+}
+.cart-voucher-box {
   margin-top: auto;
-  padding: 16px 0;
+  padding: 12px 0 8px;
+  border-top: 1px dashed var(--line);
+}
+.voucher-input-group {
   display: flex;
-  justify-content: space-between;
+  gap: 8px;
+}
+.voucher-input {
+  flex: 1;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: #faf8f5;
+}
+.voucher-input:focus {
+  outline: 2px solid var(--ink);
+  background: #fff;
+}
+.voucher-btn {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 11px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  cursor: pointer;
+  background: var(--ink);
+  color: #fff;
+  transition: all 0.2s ease;
+}
+.voucher-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.voucher-btn.remove {
+  background: #fff0f0;
+  color: #d32f2f;
+  border-color: #ffcdd2;
+}
+.voucher-msg {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+}
+.voucher-msg.success {
+  color: #2e7d32;
+}
+.voucher-msg.error {
+  color: #d32f2f;
+}
+.cart-summary-box {
+  padding: 12px 0 16px;
   border-top: 1px solid var(--line);
+  display: grid;
+  gap: 6px;
   font-size: 12px;
 }
-.cart-total strong {
-  font: 700 17px "Space Grotesk";
+.cart-summary-box .summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.cart-summary-box .discount-value {
+  color: #2e7d32;
+  font-weight: 700;
+}
+.cart-summary-box .grand-total {
+  margin-top: 4px;
+  padding-top: 8px;
+  border-top: 1px dashed #e0ded7;
+  font-size: 13px;
+}
+.cart-summary-box .grand-total strong {
+  font: 700 18px "Space Grotesk", sans-serif;
+}
+.bundle-badge {
+  background: #e5533d;
+  color: #fff !important;
+  display: inline-block;
+  padding: 2px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border-radius: 2px;
+  margin-bottom: 4px;
+}
+.bundle-contents {
+  font-size: 11px;
+  background: #fbf9f5;
+  border: 1px dashed #dedbd4;
+  padding: 6px 8px;
+  margin: 6px 0 10px;
+  border-radius: 4px;
+  line-height: 1.4;
+}
+.bundle-contents strong {
+  display: block;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #888;
+  margin-bottom: 2px;
 }
 .checkout-form {
   display: grid;

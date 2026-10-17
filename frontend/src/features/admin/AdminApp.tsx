@@ -54,7 +54,7 @@ import '../../styles/admin.css'
 
 type AdminPage = 'dashboard' | 'products' | 'categories' | 'bundles' | 'promotions' | 'banners' | 'orders' | 'staff' | 'audit-logs'
 type ProductDraft = Omit<AdminProductInput, 'price' | 'category_id' | 'description' | 'image_path'> & { price: string; category_id: string; description: string; image_path: string }
-type CategoryDraft = Omit<AdminCategoryInput, 'sort_order' | 'description'> & { sort_order: string; description: string }
+type CategoryDraft = { name: string; description: string; is_active: boolean }
 type BundleDraft = {
   name: string
   description: string
@@ -103,7 +103,7 @@ const statusNames: Record<string, string> = {
 const itemNames: Record<AdminItemType, string> = { food: 'Makanan', drink: 'Minuman', other: 'Lainnya' }
 
 const blankProduct = (): ProductDraft => ({ category_id: '', name: '', description: '', item_type: 'drink', price: '', image_path: '', allow_notes: false, is_available: true, is_active: true })
-const blankCategory = (): CategoryDraft => ({ name: '', description: '', sort_order: '0', is_active: true })
+const blankCategory = (): CategoryDraft => ({ name: '', description: '', is_active: true })
 const blankBundle = (): BundleDraft => ({ name: '', description: '', price: '', image_path: '', is_active: true, components: [] })
 const blankPromotion = (): PromotionDraft => ({ code: '', name: '', description: '', discount_type: 'percent', discount_value: '10', min_spend: '0', max_discount: '', is_active: true })
 const blankBanner = (): BannerDraft => ({ title: '', subtitle: '', image_path: '', link_url: '', sort_order: '0', is_active: true })
@@ -440,7 +440,6 @@ export default function AdminApp() {
         ? {
             name: category.name,
             description: category.description ?? '',
-            sort_order: String(category.sort_order),
             is_active: category.is_active,
           }
         : blankCategory(),
@@ -454,9 +453,10 @@ export default function AdminApp() {
     setError('')
     setNotice('')
     const input: AdminCategoryInput = {
-      ...categoryDraft,
-      sort_order: Number(categoryDraft.sort_order),
+      name: categoryDraft.name.trim(),
       description: categoryDraft.description.trim() || null,
+      is_active: categoryDraft.is_active,
+      sort_order: 0,
     }
     try {
       if (categoryEditor) await updateAdminCategory(categoryEditor.id, input)
@@ -594,7 +594,7 @@ export default function AdminApp() {
       discount_type: promotionDraft.discount_type,
       discount_value: Number(promotionDraft.discount_value),
       min_spend: Number(promotionDraft.min_spend) || 0,
-      max_discount: promotionDraft.max_discount ? Number(promotionDraft.max_discount) : null,
+      max_discount: promotionDraft.discount_type === 'fixed' ? null : (promotionDraft.max_discount ? Number(promotionDraft.max_discount) : null),
       is_active: promotionDraft.is_active,
       starts_at: null,
       ends_at: null,
@@ -1149,7 +1149,7 @@ export default function AdminApp() {
               <div className="admin-panel-head">
                 <div>
                   <h2>Daftar kategori</h2>
-                  <p>Urutan rendah ditampilkan lebih dahulu pada katalog pelanggan.</p>
+                  <p>Kategori untuk mengelompokkan produk di menu katalog.</p>
                 </div>
               </div>
               <div className="admin-table-wrap">
@@ -1159,7 +1159,6 @@ export default function AdminApp() {
                       <th>KATEGORI</th>
                       <th>DESKRIPSI</th>
                       <th>PRODUK</th>
-                      <th>URUTAN</th>
                       <th>STATUS</th>
                       <th className="align-right">AKSI</th>
                     </tr>
@@ -1173,7 +1172,6 @@ export default function AdminApp() {
                         </td>
                         <td>{c.description || '—'}</td>
                         <td>{c.products_count} produk</td>
-                        <td>{c.sort_order}</td>
                         <td><span className={`admin-status ${c.is_active ? 'good' : 'muted'}`}>{c.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
                         <td className="align-right admin-actions">
                           <button className="admin-icon-button" aria-label={`Ubah kategori ${c.name}`} onClick={() => openCategoryEditor(c)}>Ubah</button>
@@ -1182,7 +1180,7 @@ export default function AdminApp() {
                       </tr>
                     ))}
                     {!categories.length && (
-                      <tr><td colSpan={6} className="admin-empty-cell">Belum ada kategori. Tambahkan kategori untuk mengelompokkan produk.</td></tr>
+                      <tr><td colSpan={5} className="admin-empty-cell">Belum ada kategori. Tambahkan kategori untuk mengelompokkan produk.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1684,10 +1682,7 @@ export default function AdminApp() {
             <form className="admin-form" onSubmit={saveCategory}>
               <label>Nama kategori<input autoFocus maxLength={120} value={categoryDraft.name} onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })} required /></label>
               <label>Deskripsi<textarea rows={3} value={categoryDraft.description ?? ''} onChange={(e) => setCategoryDraft({ ...categoryDraft, description: e.target.value })} /></label>
-              <div className="admin-form-row">
-                <label>Urutan tampilan<input type="number" min="0" max="65535" step="1" value={categoryDraft.sort_order} onChange={(e) => setCategoryDraft({ ...categoryDraft, sort_order: e.target.value })} required /></label>
-                <label className="admin-checkbox-single"><input type="checkbox" checked={categoryDraft.is_active} onChange={(e) => setCategoryDraft({ ...categoryDraft, is_active: e.target.checked })} />Kategori aktif</label>
-              </div>
+              <label className="admin-checkbox-single"><input type="checkbox" checked={categoryDraft.is_active} onChange={(e) => setCategoryDraft({ ...categoryDraft, is_active: e.target.checked })} />Kategori aktif</label>
               {error && <p className="admin-alert error" role="alert">{error}</p>}
               <div className="admin-modal-actions">
                 <button type="button" className="admin-button quiet" onClick={() => setCategoryEditor(false)}>Batal</button>
@@ -1791,16 +1786,56 @@ export default function AdminApp() {
               <label>Deskripsi<textarea rows={2} placeholder="Keterangan syarat promo…" value={promotionDraft.description} onChange={(e) => setPromotionDraft({ ...promotionDraft, description: e.target.value })} /></label>
               <div className="admin-form-row">
                 <label>Jenis diskon
-                  <select value={promotionDraft.discount_type} onChange={(e) => setPromotionDraft({ ...promotionDraft, discount_type: e.target.value as 'fixed' | 'percent' })}>
+                  <select
+                    value={promotionDraft.discount_type}
+                    onChange={(e) => {
+                      const newType = e.target.value as 'fixed' | 'percent'
+                      let nextVal = promotionDraft.discount_value
+                      if (newType === 'fixed' && (Number(nextVal) <= 100 || !nextVal)) {
+                        nextVal = '5000'
+                      } else if (newType === 'percent' && Number(nextVal) > 100) {
+                        nextVal = '10'
+                      }
+                      setPromotionDraft({
+                        ...promotionDraft,
+                        discount_type: newType,
+                        discount_value: nextVal,
+                        max_discount: newType === 'fixed' ? '' : promotionDraft.max_discount,
+                      })
+                    }}
+                  >
                     <option value="percent">Persentase (%)</option>
                     <option value="fixed">Nominal Tetap (Rp)</option>
                   </select>
                 </label>
-                <label>Nilai potongan<input type="number" min="1" step={promotionDraft.discount_type === 'percent' ? '1' : '500'} value={promotionDraft.discount_value} onChange={(e) => setPromotionDraft({ ...promotionDraft, discount_value: e.target.value })} required /></label>
+                <label>
+                  {promotionDraft.discount_type === 'percent' ? 'Persentase potongan (%)' : 'Nominal potongan (Rp)'}
+                  <input
+                    type="number"
+                    min="1"
+                    max={promotionDraft.discount_type === 'percent' ? '100' : undefined}
+                    step={promotionDraft.discount_type === 'percent' ? '1' : '100'}
+                    placeholder={promotionDraft.discount_type === 'percent' ? 'Contoh: 10' : 'Contoh: 5000'}
+                    value={promotionDraft.discount_value}
+                    onChange={(e) => setPromotionDraft({ ...promotionDraft, discount_value: e.target.value })}
+                    required
+                  />
+                </label>
               </div>
               <div className="admin-form-row">
                 <label>Min. belanja (Rp)<input type="number" min="0" step="1000" placeholder="0" value={promotionDraft.min_spend} onChange={(e) => setPromotionDraft({ ...promotionDraft, min_spend: e.target.value })} /></label>
-                <label>Maks. diskon (Rp)<input type="number" min="0" step="1000" placeholder="Kosongkan jika tanpa batas" value={promotionDraft.max_discount} onChange={(e) => setPromotionDraft({ ...promotionDraft, max_discount: e.target.value })} /></label>
+                <label style={{ opacity: promotionDraft.discount_type === 'fixed' ? 0.45 : 1 }}>
+                  Maks. diskon (Rp)
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    placeholder={promotionDraft.discount_type === 'fixed' ? 'Tidak berlaku nominal tetap' : 'Kosongkan jika tanpa batas'}
+                    disabled={promotionDraft.discount_type === 'fixed'}
+                    value={promotionDraft.discount_type === 'fixed' ? '' : promotionDraft.max_discount}
+                    onChange={(e) => setPromotionDraft({ ...promotionDraft, max_discount: e.target.value })}
+                  />
+                </label>
               </div>
               <label className="admin-checkbox-single"><input type="checkbox" checked={promotionDraft.is_active} onChange={(e) => setPromotionDraft({ ...promotionDraft, is_active: e.target.checked })} />Promo aktif dan dapat digunakan</label>
               {error && <p className="admin-alert error" role="alert">{error}</p>}

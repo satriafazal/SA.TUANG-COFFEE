@@ -26,5 +26,6 @@ export const paymentStatusLabels: Record<string, string> = {
 export const preparationGroupLabel = (type: string): string => {
   if (type === 'food') return 'Makanan'
   if (type === 'drink') return 'Minuman'
+  if (type === 'bundle') return 'Paket'
   return 'Lainnya'
 }

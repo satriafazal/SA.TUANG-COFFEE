@@ -941,6 +941,43 @@
   width: min(330px, 45%);
   margin: 0;
 }
+.cashier-menu-filter-row {
+  display: flex;
+  gap: 8px;
+}
+.cashier-menu-filter-row button {
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid #d2d4cc;
+  background: #fff;
+  font: 700 11px "Space Grotesk", sans-serif;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.cashier-menu-filter-row button.active {
+  background: #353a33;
+  color: #fff;
+  border-color: #353a33;
+}
+.cashier-menu-sections {
+  display: grid;
+  gap: 20px;
+}
+.cashier-group-title {
+  font: 700 14px "Space Grotesk", sans-serif;
+  color: #353a33;
+  margin: 0 0 10px;
+}
+.cashier-bundle-hint {
+  display: block;
+  font-size: 9px;
+  color: #858a81;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
 .cashier-products-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

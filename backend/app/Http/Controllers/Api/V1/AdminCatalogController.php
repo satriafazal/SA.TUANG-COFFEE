@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 use Symfony\Component\HttpKernel\Exception\ConflictHttpException;
 
@@ -54,7 +55,6 @@ class AdminCatalogController extends Controller
     {
         $categories = Category::query()
             ->withCount('products')
-            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
@@ -434,6 +434,15 @@ class AdminCatalogController extends Controller
         $data['is_active'] = $data['is_active'] ?? true;
         $data['min_spend'] = $data['min_spend'] ?? 0;
 
+        if ($data['discount_type'] === 'percent' && $data['discount_value'] > 100) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Persentase diskon tidak boleh melebihi 100%.',
+            ]);
+        }
+        if ($data['discount_type'] === 'fixed') {
+            $data['max_discount'] = null;
+        }
+
         $promotion = DB::transaction(function () use ($request, $data): Promotion {
             $promotion = Promotion::query()->create($data);
             $this->audit($request, 'admin.promotion.created', $promotion, null, $promotion->getAttributes());
@@ -460,6 +469,15 @@ class AdminCatalogController extends Controller
         ]);
 
         $data['code'] = strtoupper(trim($data['code']));
+
+        if ($data['discount_type'] === 'percent' && $data['discount_value'] > 100) {
+            throw ValidationException::withMessages([
+                'discount_value' => 'Persentase diskon tidak boleh melebihi 100%.',
+            ]);
+        }
+        if ($data['discount_type'] === 'fixed') {
+            $data['max_discount'] = null;
+        }
 
         $promotion = DB::transaction(function () use ($request, $data, $promotionId): Promotion {
             $promotion = Promotion::query()->lockForUpdate()->findOrFail($promotionId);

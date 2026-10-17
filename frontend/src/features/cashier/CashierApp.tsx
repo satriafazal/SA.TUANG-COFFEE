@@ -7,12 +7,14 @@ import {
   getCurrentStaff,
   loginStaff,
   logoutStaff,
+  updateCashierBundleAvailability,
   updateCashierProductAvailability,
   updatePreparationGroupStatus,
   type CashierProduct,
   type StaffOrder,
   type StaffUser,
 } from '../../api'
+import type { CustomerBundle } from '../../types'
 import '../../styles/cashier.css'
 import { dateTime, escapeHtml, rupiah, todayLabel } from '../../utils/formatters'
 import { orderStatusLabels, paymentStatusLabels, preparationGroupLabel } from '../../utils/constants'
@@ -69,6 +71,8 @@ export default function CashierApp() {
   const [orders, setOrders] = useState<StaffOrder[]>([])
   const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null)
   const [products, setProducts] = useState<CashierProduct[]>([])
+  const [bundles, setBundles] = useState<CustomerBundle[]>([])
+  const [menuTab, setMenuTab] = useState<'all' | 'products' | 'bundles'>('all')
   const [loadingOrders, setLoadingOrders] = useState(false)
   const [loadingProducts, setLoadingProducts] = useState(false)
   const [busyAction, setBusyAction] = useState('')
@@ -122,7 +126,12 @@ export default function CashierApp() {
   useEffect(() => {
     if (!staff || view !== 'menu') return
     let active = true
-    getCashierProducts().then((response) => { if (active) setProducts(response.products) })
+    getCashierProducts().then((response) => {
+      if (active) {
+        setProducts(response.products)
+        setBundles(response.bundles ?? [])
+      }
+    })
       .catch((cause: Error) => { if (active) setError(cause.message) })
       .finally(() => { if (active) setLoadingProducts(false) })
     return () => { active = false }
@@ -131,6 +140,7 @@ export default function CashierApp() {
   const filteredOrders = useMemo(() => orders.filter((order) => !queueFilter || order.order_status === queueFilter), [orders, queueFilter])
   const selectedOrder = useMemo(() => orders.find((order) => order.order_number === selectedOrderNumber) ?? null, [orders, selectedOrderNumber])
   const filteredProducts = useMemo(() => products.filter((product) => `${product.name} ${productTypeLabel(product.item_type)}`.toLowerCase().includes(productSearch.toLowerCase())), [products, productSearch])
+  const filteredBundles = useMemo(() => bundles.filter((bundle) => `${bundle.name} ${bundle.description ?? ''}`.toLowerCase().includes(productSearch.toLowerCase())), [bundles, productSearch])
   const selectedPreparationGroups = useMemo(() => {
     if (!selectedOrder) return []
     const grouped = new Map<string, StaffOrder['items']>()
@@ -247,6 +257,21 @@ export default function CashierApp() {
     }
   }
 
+  async function handleBundleAvailability(bundle: CustomerBundle) {
+    const nextState = !bundle.is_active
+    setBusyAction(`bundle:${bundle.id}`)
+    setError('')
+    try {
+      const response = await updateCashierBundleAvailability(bundle.id, nextState)
+      setBundles((current) => current.map((item) => item.id === bundle.id ? response.bundle : item))
+      setNotice(`Paket ${bundle.name} ${response.bundle.is_active ? 'tersedia kembali' : 'ditandai habis'}.`)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Ketersediaan paket menu belum dapat diperbarui.')
+    } finally {
+      setBusyAction('')
+    }
+  }
+
   if (sessionChecking) return <div className="cashier-loading" role="status"><span className="cashier-spinner" />Memeriksa sesi…</div>
 
   if (!staff) return <main className="cashier-login-page">
@@ -313,8 +338,105 @@ export default function CashierApp() {
           </section>
         </div>
       </> : <section className="cashier-menu-page">
-        <div className="menu-availability-head"><div><h2>Menu outlet</h2><p>Item yang ditandai habis tidak akan muncul di katalog pelanggan.</p></div><label className="cashier-search"><span>⌕</span><input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Cari menu" /></label></div>
-        {loadingProducts ? <div className="cashier-empty"><span className="cashier-spinner" />Memuat menu…</div> : filteredProducts.length ? <div className="cashier-products-grid">{filteredProducts.map((product) => <article className={`cashier-product-card ${!product.is_available ? 'unavailable' : ''}`} key={product.id}><div className="cashier-product-icon">{product.item_type === 'food' ? '◒' : product.item_type === 'drink' ? '◉' : '◈'}</div><div className="cashier-product-content"><span className="cashier-eyebrow">{productTypeLabel(product.item_type)}</span><h3>{product.name}</h3><strong>{rupiah(product.price)}</strong></div><div className="cashier-product-toggle"><span className={product.is_available ? 'available' : 'not-available'}>{product.is_available ? 'Tersedia' : 'Habis'}</span><button className={`availability-switch ${product.is_available ? 'on' : ''}`} role="switch" aria-checked={product.is_available} aria-label={`${product.is_available ? 'Tandai habis' : 'Tandai tersedia'}: ${product.name}`} disabled={busyAction === `product:${product.id}`} onClick={() => void handleAvailability(product)}><span /></button></div></article>)}</div> : <div className="cashier-empty"><strong>Menu tidak ditemukan</strong><p>Coba kata kunci lain.</p></div>}
+        <div className="menu-availability-head">
+          <div>
+            <h2>Ketersediaan menu & paket</h2>
+            <p>Item atau paket yang ditandai habis tidak dapat dipesan oleh pelanggan.</p>
+          </div>
+          <div className="cashier-menu-filter-row">
+            <button className={menuTab === 'all' ? 'active' : ''} onClick={() => setMenuTab('all')}>Semua ({products.length + bundles.length})</button>
+            <button className={menuTab === 'products' ? 'active' : ''} onClick={() => setMenuTab('products')}>Menu Satuan ({products.length})</button>
+            <button className={menuTab === 'bundles' ? 'active' : ''} onClick={() => setMenuTab('bundles')}>Paket Menu ({bundles.length})</button>
+          </div>
+          <label className="cashier-search">
+            <span>⌕</span>
+            <input value={productSearch} onChange={(event) => setProductSearch(event.target.value)} placeholder="Cari menu atau paket" />
+          </label>
+        </div>
+        {loadingProducts ? (
+          <div className="cashier-empty"><span className="cashier-spinner" />Memuat menu…</div>
+        ) : (filteredProducts.length || filteredBundles.length) ? (
+          <div className="cashier-menu-sections">
+            {(menuTab === 'all' || menuTab === 'bundles') && filteredBundles.length > 0 && (
+              <div className="cashier-menu-group">
+                <h3 className="cashier-group-title">🎁 Paket Menu ({filteredBundles.length})</h3>
+                <div className="cashier-products-grid">
+                  {filteredBundles.map((bundle) => (
+                    <article className={`cashier-product-card ${!bundle.is_active ? 'unavailable' : ''}`} key={`bundle-${bundle.id}`}>
+                      <div className="cashier-product-icon">🎁</div>
+                      <div className="cashier-product-content">
+                        <span className="cashier-eyebrow">PAKET HEMAT</span>
+                        <h3>{bundle.name}</h3>
+                        {bundle.components && bundle.components.length > 0 && (
+                          <small className="cashier-bundle-hint">
+                            {bundle.components.map((c) => `${c.quantity}x ${c.product?.name ?? 'Item'}`).join(', ')}
+                          </small>
+                        )}
+                        <strong>{rupiah(bundle.price)}</strong>
+                      </div>
+                      <div className="cashier-product-toggle">
+                        <span className={bundle.is_active ? 'available' : 'not-available'}>
+                          {bundle.is_active ? 'Tersedia' : 'Habis'}
+                        </span>
+                        <button
+                          className={`availability-switch ${bundle.is_active ? 'on' : ''}`}
+                          role="switch"
+                          aria-checked={bundle.is_active}
+                          aria-label={`${bundle.is_active ? 'Tandai habis' : 'Tandai tersedia'}: ${bundle.name}`}
+                          disabled={busyAction === `bundle:${bundle.id}`}
+                          onClick={() => void handleBundleAvailability(bundle)}
+                        >
+                          <span />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(menuTab === 'all' || menuTab === 'products') && filteredProducts.length > 0 && (
+              <div className="cashier-menu-group">
+                {menuTab === 'all' && filteredBundles.length > 0 && (
+                  <h3 className="cashier-group-title">☕ Menu Satuan ({filteredProducts.length})</h3>
+                )}
+                <div className="cashier-products-grid">
+                  {filteredProducts.map((product) => (
+                    <article className={`cashier-product-card ${!product.is_available ? 'unavailable' : ''}`} key={product.id}>
+                      <div className="cashier-product-icon">
+                        {product.item_type === 'food' ? '◒' : product.item_type === 'drink' ? '◉' : '◈'}
+                      </div>
+                      <div className="cashier-product-content">
+                        <span className="cashier-eyebrow">{productTypeLabel(product.item_type)}</span>
+                        <h3>{product.name}</h3>
+                        <strong>{rupiah(product.price)}</strong>
+                      </div>
+                      <div className="cashier-product-toggle">
+                        <span className={product.is_available ? 'available' : 'not-available'}>
+                          {product.is_available ? 'Tersedia' : 'Habis'}
+                        </span>
+                        <button
+                          className={`availability-switch ${product.is_available ? 'on' : ''}`}
+                          role="switch"
+                          aria-checked={product.is_available}
+                          aria-label={`${product.is_available ? 'Tandai habis' : 'Tandai tersedia'}: ${product.name}`}
+                          disabled={busyAction === `product:${product.id}`}
+                          onClick={() => void handleAvailability(product)}
+                        >
+                          <span />
+                        </button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="cashier-empty">
+            <strong>Menu tidak ditemukan</strong>
+            <p>Coba kata kunci lain.</p>
+          </div>
+        )}
       </section>}
       <footer className="cashier-footer"><span>SA.TUANG COFFEE · BANJAR WIJAYA</span><span>{staff.email}</span></footer>
     </main>

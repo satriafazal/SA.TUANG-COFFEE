@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/menu', [MenuController::class, 'index'])->name('api.v1.menu.index');
     Route::post('/orders', [OrderController::class, 'store'])->name('api.v1.orders.store');
+    Route::post('/promotions/validate', [OrderController::class, 'validatePromo'])->name('api.v1.promotions.validate');
     Route::get('/orders/{orderNumber}/status', [TrackOrderController::class, 'show'])->name('api.v1.orders.status');
 
     Route::post('/auth/login', [AuthController::class, 'login'])->name('api.v1.auth.login');
@@ -58,6 +59,7 @@ Route::prefix('v1')->group(function (): void {
     Route::prefix('cashier')->middleware(['auth:sanctum', 'role:cashier,admin'])->group(function (): void {
         Route::get('/products', [CashierOrderController::class, 'products'])->name('api.v1.cashier.products.index');
         Route::patch('/products/{productId}/availability', [CashierOrderController::class, 'updateProductAvailability'])->name('api.v1.cashier.products.availability');
+        Route::patch('/bundles/{bundleId}/availability', [CashierOrderController::class, 'updateBundleAvailability'])->name('api.v1.cashier.bundles.availability');
         Route::get('/orders', [CashierOrderController::class, 'index'])->name('api.v1.cashier.orders.index');
         Route::get('/orders/completed', [CashierOrderController::class, 'completed'])->name('api.v1.cashier.orders.completed');
         Route::post('/orders/{orderNumber}/confirm-payment', [CashierOrderController::class, 'confirmPayment'])->name('api.v1.cashier.orders.confirm-payment');

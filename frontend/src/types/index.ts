@@ -2,7 +2,32 @@ export type Category = {
   id: number
   name: string
   slug: string
-  sort_order: number
+  sort_order?: number
+}
+
+export type BundleComponentItem = {
+  id: number
+  bundle_id: number
+  product_id: number
+  quantity: number
+  product: {
+    id: number
+    name: string
+    price: string
+    item_type: 'food' | 'drink'
+    is_available: boolean
+  }
+}
+
+export type CustomerBundle = {
+  id: number
+  name: string
+  slug: string
+  description: string | null
+  price: string
+  image_path: string | null
+  is_active: boolean
+  components?: BundleComponentItem[]
 }
 
 export type Product = {

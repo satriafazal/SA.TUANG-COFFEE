@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Banner;
+use App\Models\Bundle;
 use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
@@ -14,7 +15,6 @@ class MenuController extends Controller
     {
         $categories = Category::query()
             ->where('is_active', true)
-            ->orderBy('sort_order')
             ->orderBy('name')
             ->get(['id', 'name', 'slug', 'description', 'sort_order']);
 
@@ -40,6 +40,27 @@ class MenuController extends Controller
                 'is_available',
             ]);
 
+        $now = now();
+        $bundles = Bundle::query()
+            ->where('is_active', true)
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('starts_at')->orWhere('starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('ends_at')->orWhere('ends_at', '>=', $now);
+            })
+            ->with(['components.product:id,name,item_type,price,is_available'])
+            ->orderBy('name')
+            ->get([
+                'id',
+                'name',
+                'slug',
+                'description',
+                'price',
+                'image_path',
+                'is_active',
+            ]);
+
         $banners = Banner::query()
             ->where('is_active', true)
             ->orderBy('sort_order')
@@ -55,6 +76,7 @@ class MenuController extends Controller
         return response()->json([
             'categories' => $categories,
             'products' => $products,
+            'bundles' => $bundles,
             'banners' => $banners,
         ]);
     }

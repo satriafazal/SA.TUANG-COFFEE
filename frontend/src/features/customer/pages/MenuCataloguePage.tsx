@@ -1,5 +1,6 @@
+import { useMemo } from 'react'
 import type { CustomerMode } from '../../../state/prototypeState'
-import type { Category, Product } from '../../../types'
+import type { Category, CustomerBundle, Product } from '../../../types'
 import { rupiah } from '../../../utils/formatters'
 import type { CartAction } from '../components/CartDrawer'
 
@@ -12,6 +13,7 @@ interface MenuCataloguePageProps {
   setQuery: (q: string) => void
   categories: Category[]
   filtered: Product[]
+  bundles?: CustomerBundle[]
   loading: boolean
   loadError: string
   setGuestOfferOpen: (open: boolean) => void
@@ -28,12 +30,21 @@ export function MenuCataloguePage({
   setQuery,
   categories,
   filtered,
+  bundles = [],
   loading,
   loadError,
   setGuestOfferOpen,
   setCartOpen,
   dispatch,
 }: MenuCataloguePageProps) {
+  const filteredBundles = useMemo(() => {
+    return bundles.filter(
+      (b) =>
+        b.is_active &&
+        `${b.name} ${b.description ?? ''}`.toLowerCase().includes(query.toLowerCase()),
+    )
+  }, [bundles, query])
+
   return (
     <section className="catalogue-page">
       <div className="catalogue-heading">
@@ -100,6 +111,18 @@ export function MenuCataloguePage({
           >
             Semua menu
           </button>
+          {bundles.length > 0 && (
+            <button
+              className={
+                category === 'paket-hemat'
+                  ? 'category-chip selected'
+                  : 'category-chip'
+              }
+              onClick={() => setCategory('paket-hemat')}
+            >
+              🎁 Paket Hemat
+            </button>
+          )}
           {categories.map((item) => (
             <button
               key={item.id}
@@ -128,8 +151,138 @@ export function MenuCataloguePage({
               Coba lagi
             </button>
           </div>
-        ) : filtered.length ? (
+        ) : category === 'paket-hemat' ? (
+          filteredBundles.length ? (
+            <div className="product-grid">
+              {filteredBundles.map((bundle, index) => {
+                const isSoldOut =
+                  !bundle.is_active ||
+                  (bundle.components &&
+                    bundle.components.some(
+                      (c) => c.product && !c.product.is_available,
+                    ))
+                return (
+                  <article className="product-card bundle-card" key={`bundle-${bundle.id}`}>
+                    <div className={`product-visual visual-${(index + 3) % 6}`}>
+                      {bundle.image_path ? (
+                        <img
+                          src={bundle.image_path}
+                          alt={bundle.name}
+                          onError={(e) => {
+                            ;(e.currentTarget as HTMLImageElement).style.display =
+                              'none'
+                          }}
+                        />
+                      ) : null}
+                      <span className="product-emoji" aria-hidden="true">
+                        🎁
+                      </span>
+                    </div>
+                    <div className="product-info">
+                      <div className="product-category bundle-badge">
+                        PAKET HEMAT
+                      </div>
+                      <h3>{bundle.name}</h3>
+                      <p>
+                        {bundle.description ||
+                          'Kombinasi hemat menu favorit pilihan kami.'}
+                      </p>
+                      {bundle.components && bundle.components.length > 0 && (
+                        <div className="bundle-contents">
+                          <strong>Termasuk:</strong>
+                          <span>
+                            {bundle.components
+                              .map(
+                                (c) =>
+                                  `${c.quantity}x ${c.product?.name ?? 'Menu'}`,
+                              )
+                              .join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      <div className="product-buy">
+                        <strong>{rupiah(bundle.price)}</strong>
+                        <button
+                          className="add-button"
+                          disabled={isSoldOut}
+                          onClick={() => dispatch({ type: 'add_bundle', bundle })}
+                          aria-label={`Tambah ${bundle.name} ke keranjang`}
+                        >
+                          {isSoldOut ? 'Habis' : '+'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="notice">Paket menu belum tersedia atau tidak cocok dengan pencarian.</div>
+          )
+        ) : filtered.length || (category === 'semua' && filteredBundles.length) ? (
           <div className="product-grid">
+            {category === 'semua' &&
+              filteredBundles.map((bundle, index) => {
+                const isSoldOut =
+                  !bundle.is_active ||
+                  (bundle.components &&
+                    bundle.components.some(
+                      (c) => c.product && !c.product.is_available,
+                    ))
+                return (
+                  <article className="product-card bundle-card" key={`bundle-${bundle.id}`}>
+                    <div className={`product-visual visual-${(index + 3) % 6}`}>
+                      {bundle.image_path ? (
+                        <img
+                          src={bundle.image_path}
+                          alt={bundle.name}
+                          onError={(e) => {
+                            ;(e.currentTarget as HTMLImageElement).style.display =
+                              'none'
+                          }}
+                        />
+                      ) : null}
+                      <span className="product-emoji" aria-hidden="true">
+                        🎁
+                      </span>
+                    </div>
+                    <div className="product-info">
+                      <div className="product-category bundle-badge">
+                        PAKET HEMAT
+                      </div>
+                      <h3>{bundle.name}</h3>
+                      <p>
+                        {bundle.description ||
+                          'Kombinasi hemat menu favorit pilihan kami.'}
+                      </p>
+                      {bundle.components && bundle.components.length > 0 && (
+                        <div className="bundle-contents">
+                          <strong>Termasuk:</strong>
+                          <span>
+                            {bundle.components
+                              .map(
+                                (c) =>
+                                  `${c.quantity}x ${c.product?.name ?? 'Menu'}`,
+                              )
+                              .join(', ')}
+                          </span>
+                        </div>
+                      )}
+                      <div className="product-buy">
+                        <strong>{rupiah(bundle.price)}</strong>
+                        <button
+                          className="add-button"
+                          disabled={isSoldOut}
+                          onClick={() => dispatch({ type: 'add_bundle', bundle })}
+                          aria-label={`Tambah ${bundle.name} ke keranjang`}
+                        >
+                          {isSoldOut ? 'Habis' : '+'}
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                )
+              })}
             {filtered.map((product, index) => (
               <article className="product-card" key={product.id}>
                 <div className={`product-visual visual-${index % 6}`}>

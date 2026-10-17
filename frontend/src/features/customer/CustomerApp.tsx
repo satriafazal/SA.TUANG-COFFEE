@@ -6,7 +6,14 @@ import {
   useState,
   type FormEvent,
 } from 'react'
-import { createCashOrder, getMenu, trackOrder, type CustomerBanner } from '../../api'
+import {
+  createCashOrder,
+  getMenu,
+  trackOrder,
+  validatePromoCode,
+  type CustomerBanner,
+  type PromoValidationResult,
+} from '../../api'
 import {
   hashPrototypePassword,
   newGuestSession,
@@ -24,7 +31,7 @@ import {
   type PrototypeOrderItem,
   type PrototypeSession,
 } from '../../state/prototypeState'
-import type { Category, Product, TrackedOrder } from '../../types'
+import type { Category, CustomerBundle, Product, TrackedOrder } from '../../types'
 
 import {
   CartDrawer,
@@ -44,41 +51,92 @@ import { OrderRecoveryPage } from './pages/OrderRecoveryPage'
 import { OrderTrackingPage } from './pages/OrderTrackingPage'
 import { SavedOrdersPage } from './pages/SavedOrdersPage'
 
-function readCart(): Record<number, CartLine> {
+function readCart(): Record<string, CartLine> {
   try {
-    return JSON.parse(
+    const raw = JSON.parse(
       localStorage.getItem('satuang-cart') ?? '{}',
-    ) as Record<number, CartLine>
+    ) as Record<string, any>
+    const normalized: Record<string, CartLine> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (!v) continue
+      const key = v.key || (v.product ? `p-${v.product.id}` : k)
+      normalized[key] = {
+        key,
+        item_type: v.item_type || v.product?.item_type || 'drink',
+        product_id: v.product_id ?? v.product?.id,
+        bundle_id: v.bundle_id,
+        name: v.name || v.product?.name || 'Item',
+        price: v.price || v.product?.price || '0',
+        allow_notes: v.allow_notes ?? v.product?.allow_notes ?? false,
+        quantity: v.quantity || 1,
+        note: v.note || '',
+        bundle_components: v.bundle_components,
+        product: v.product,
+      }
+    }
+    return normalized
   } catch {
     return {}
   }
 }
 
-function cartReducer(state: Record<number, CartLine>, action: CartAction) {
+function cartReducer(state: Record<string, CartLine>, action: CartAction): Record<string, CartLine> {
   if (action.type === 'clear') return {}
   if (action.type === 'add') {
-    const previous = state[action.product.id]
+    const key = `p-${action.product.id}`
+    const previous = state[key]
     return {
       ...state,
-      [action.product.id]: {
-        product: action.product,
+      [key]: {
+        key,
+        item_type: action.product.item_type,
+        product_id: action.product.id,
+        name: action.product.name,
+        price: action.product.price,
+        allow_notes: action.product.allow_notes,
         quantity: (previous?.quantity ?? 0) + 1,
         note: previous?.note ?? '',
+        product: action.product,
+      },
+    }
+  }
+  if (action.type === 'add_bundle') {
+    const key = `b-${action.bundle.id}`
+    const previous = state[key]
+    return {
+      ...state,
+      [key]: {
+        key,
+        item_type: 'bundle',
+        bundle_id: action.bundle.id,
+        name: action.bundle.name,
+        price: action.bundle.price,
+        allow_notes: false,
+        quantity: (previous?.quantity ?? 0) + 1,
+        note: '',
+        bundle_components: action.bundle.components?.map((c) => ({
+          name: c.product?.name || 'Menu',
+          quantity: c.quantity,
+        })),
       },
     }
   }
   if (action.type === 'quantity') {
     if (action.quantity < 1) {
       const next = { ...state }
-      delete next[action.id]
+      delete next[action.key]
       return next
     }
     return {
       ...state,
-      [action.id]: { ...state[action.id], quantity: action.quantity },
+      [action.key]: { ...state[action.key], quantity: action.quantity },
     }
   }
-  return { ...state, [action.id]: { ...state[action.id], note: action.note } }
+  if (action.type === 'note') {
+    if (!state[action.key]) return state
+    return { ...state, [action.key]: { ...state[action.key], note: action.note } }
+  }
+  return state
 }
 
 function startingScreen(session: PrototypeSession | null): Screen {
@@ -95,6 +153,7 @@ function startingScreen(session: PrototypeSession | null): Screen {
 
 export function CustomerApp() {
   const [menu, setMenu] = useState<Product[]>([])
+  const [bundles, setBundles] = useState<CustomerBundle[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [banners, setBanners] = useState<CustomerBanner[]>([])
   const [loading, setLoading] = useState(true)
@@ -108,6 +167,12 @@ export function CustomerApp() {
   const [checkoutError, setCheckoutError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [guestOfferOpen, setGuestOfferOpen] = useState(false)
+
+  const [promoCode, setPromoCode] = useState('')
+  const [appliedPromo, setAppliedPromo] = useState<PromoValidationResult['promo'] | null>(null)
+  const [promoDiscount, setPromoDiscount] = useState<number>(0)
+  const [promoMessage, setPromoMessage] = useState('')
+  const [checkingPromo, setCheckingPromo] = useState(false)
   const [session, setSession] = useState<PrototypeSession | null>(() =>
     readPrototypeSession(),
   )
@@ -168,10 +233,67 @@ export function CustomerApp() {
 
   const lines = Object.values(cart)
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0)
-  const total = lines.reduce(
-    (sum, line) => sum + Number(line.product.price) * line.quantity,
+  const subtotal = lines.reduce(
+    (sum, line) => sum + Number(line.price) * line.quantity,
     0,
   )
+
+  useEffect(() => {
+    if (!appliedPromo) {
+      setPromoDiscount(0)
+      return
+    }
+    if (subtotal < appliedPromo.min_spend) {
+      setPromoMessage(
+        `Subtotal di bawah min. belanja Rp ${appliedPromo.min_spend.toLocaleString('id-ID')}`,
+      )
+      setPromoDiscount(0)
+      return
+    }
+    let disc = 0
+    if (appliedPromo.discount_type === 'percent') {
+      disc = Math.round(subtotal * (appliedPromo.discount_value / 100))
+      if (appliedPromo.max_discount && appliedPromo.max_discount > 0) {
+        disc = Math.min(disc, appliedPromo.max_discount)
+      }
+    } else {
+      disc = appliedPromo.discount_value
+    }
+    disc = Math.min(disc, subtotal)
+    setPromoDiscount(disc)
+    setPromoMessage(`Kode promo ${appliedPromo.code} aktif`)
+  }, [appliedPromo, subtotal])
+
+  const finalTotal = Math.max(0, subtotal - promoDiscount)
+
+  async function handleApplyPromo() {
+    if (!promoCode.trim()) return
+    setCheckingPromo(true)
+    setPromoMessage('')
+    try {
+      const res = await validatePromoCode(promoCode.trim(), subtotal)
+      if (res.valid && res.promo) {
+        setAppliedPromo(res.promo)
+        setPromoDiscount(res.discount_amount ?? 0)
+        setPromoMessage(res.message)
+      } else {
+        setPromoMessage(res.message || 'Kode promo tidak valid.')
+      }
+    } catch (err) {
+      setPromoMessage(err instanceof Error ? err.message : 'Kode promo tidak valid.')
+      setAppliedPromo(null)
+      setPromoDiscount(0)
+    } finally {
+      setCheckingPromo(false)
+    }
+  }
+
+  function handleRemovePromo() {
+    setAppliedPromo(null)
+    setPromoDiscount(0)
+    setPromoCode('')
+    setPromoMessage('')
+  }
 
   const filtered = useMemo(() => {
     return menu.filter((product) => {
@@ -192,6 +314,7 @@ export function CustomerApp() {
     getMenu()
       .then((data) => {
         setMenu(data.products)
+        setBundles(data.bundles ?? [])
         setCategories(data.categories)
         setBanners(data.banners ?? [])
       })
@@ -338,10 +461,11 @@ export function CustomerApp() {
             ? { customer_phone: checkoutPhone.trim() }
             : {}),
           payment_method: 'cash',
-          items: lines.map(({ product, quantity, note }) => ({
-            product_id: product.id,
-            quantity,
-            ...(note ? { special_instructions: note } : {}),
+          ...(appliedPromo && promoDiscount > 0 ? { promo_code: appliedPromo.code } : {}),
+          items: lines.map((line) => ({
+            ...(line.bundle_id ? { bundle_id: line.bundle_id } : { product_id: line.product_id }),
+            quantity: line.quantity,
+            ...(line.note ? { special_instructions: line.note } : {}),
           })),
         },
         idempotencyKey.current,
@@ -359,17 +483,18 @@ export function CustomerApp() {
         mode: session?.mode ?? 'guest',
         ...(session?.mode === 'guest' ? { guestToken: session.token } : {}),
         ...(session?.mode === 'member' ? { memberEmail: session.email } : {}),
-        items: lines.map(({ product, quantity }) => ({
-          name: product.name,
-          itemType: product.item_type,
-          quantity,
-          price: product.price,
+        items: lines.map((line) => ({
+          name: line.name,
+          itemType: line.item_type,
+          quantity: line.quantity,
+          price: line.price,
         })) as PrototypeOrderItem[],
       }
 
       savePrototypeOrder(snapshot)
       setOrders(readPrototypeOrders())
       dispatch({ type: 'clear' })
+      handleRemovePromo()
       idempotencyKey.current = crypto.randomUUID()
       setCheckoutName(currentMember?.name ?? '')
       setCheckoutPhone('')
@@ -556,6 +681,7 @@ export function CustomerApp() {
             setQuery={setQuery}
             categories={categories}
             filtered={filtered}
+            bundles={bundles}
             loading={loading}
             loadError={loadError}
             setGuestOfferOpen={setGuestOfferOpen}
@@ -611,7 +737,9 @@ export function CustomerApp() {
         isOpen={cartOpen}
         onClose={() => setCartOpen(false)}
         lines={lines}
-        total={total}
+        subtotal={subtotal}
+        discountAmount={promoDiscount}
+        finalTotal={finalTotal}
         itemCount={itemCount}
         sessionMode={sessionMode}
         currentMember={currentMember}
@@ -623,6 +751,13 @@ export function CustomerApp() {
         submitting={submitting}
         submitOrder={submitOrder}
         dispatch={dispatch}
+        promoCode={promoCode}
+        setPromoCode={setPromoCode}
+        appliedPromo={appliedPromo}
+        promoMessage={promoMessage}
+        checkingPromo={checkingPromo}
+        onApplyPromo={handleApplyPromo}
+        onRemovePromo={handleRemovePromo}
       />
     </div>
   )

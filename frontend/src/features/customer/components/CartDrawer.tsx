@@ -1,20 +1,36 @@
 import type { FormEvent } from 'react'
 import type { CustomerMode, PrototypeMember } from '../../../state/prototypeState'
-import type { Product } from '../../../types'
+import type { CustomerBundle, Product } from '../../../types'
 import { rupiah } from '../../../utils/formatters'
 
-export type CartLine = { product: Product; quantity: number; note: string }
+export type CartLine = {
+  key: string
+  item_type: 'food' | 'drink' | 'bundle'
+  product_id?: number
+  bundle_id?: number
+  name: string
+  price: string
+  allow_notes: boolean
+  quantity: number
+  note: string
+  bundle_components?: Array<{ name: string; quantity: number }>
+  product?: Product
+}
+
 export type CartAction =
   | { type: 'add'; product: Product }
-  | { type: 'quantity'; id: number; quantity: number }
-  | { type: 'note'; id: number; note: string }
+  | { type: 'add_bundle'; bundle: CustomerBundle }
+  | { type: 'quantity'; key: string; quantity: number }
+  | { type: 'note'; key: string; note: string }
   | { type: 'clear' }
 
 interface CartDrawerProps {
   isOpen: boolean
   onClose: () => void
   lines: CartLine[]
-  total: number
+  subtotal: number
+  discountAmount: number
+  finalTotal: number
   itemCount: number
   sessionMode: CustomerMode
   currentMember: PrototypeMember | null
@@ -26,13 +42,27 @@ interface CartDrawerProps {
   submitting: boolean
   submitOrder: (event: FormEvent<HTMLFormElement>) => void
   dispatch: (action: CartAction) => void
+  promoCode: string
+  setPromoCode: (val: string) => void
+  appliedPromo?: {
+    code: string
+    name?: string
+    discount_amount?: number
+    [key: string]: any
+  } | null
+  promoMessage: string
+  checkingPromo: boolean
+  onApplyPromo: () => void
+  onRemovePromo: () => void
 }
 
 export function CartDrawer({
   isOpen,
   onClose,
   lines,
-  total,
+  subtotal,
+  discountAmount,
+  finalTotal,
   itemCount,
   sessionMode,
   currentMember,
@@ -44,6 +74,13 @@ export function CartDrawer({
   submitting,
   submitOrder,
   dispatch,
+  promoCode,
+  setPromoCode,
+  appliedPromo,
+  promoMessage,
+  checkingPromo,
+  onApplyPromo,
+  onRemovePromo,
 }: CartDrawerProps) {
   if (!isOpen) return null
 
@@ -94,22 +131,31 @@ export function CartDrawer({
         ) : (
           <>
             <div className="cart-lines">
-              {lines.map(({ product, quantity, note }) => (
-                <div className="cart-line" key={product.id}>
+              {lines.map((line) => (
+                <div className="cart-line" key={line.key}>
                   <div className="cart-line-icon">
-                    {product.item_type === 'food' ? '🥐' : '☕'}
+                    {line.item_type === 'bundle'
+                      ? '🎁'
+                      : line.item_type === 'food'
+                        ? '🥐'
+                        : '☕'}
                   </div>
                   <div className="cart-line-main">
-                    <strong>{product.name}</strong>
-                    <span>{rupiah(product.price)}</span>
-                    {product.allow_notes && (
+                    <strong>{line.name}</strong>
+                    {line.bundle_components && line.bundle_components.length > 0 && (
+                      <small className="cart-bundle-items">
+                        Termasuk: {line.bundle_components.map((c) => `${c.quantity}x ${c.name}`).join(', ')}
+                      </small>
+                    )}
+                    <span>{rupiah(line.price)}</span>
+                    {line.allow_notes && (
                       <input
                         className="note-input"
-                        value={note}
+                        value={line.note}
                         onChange={(event) =>
                           dispatch({
                             type: 'note',
-                            id: product.id,
+                            key: line.key,
                             note: event.target.value,
                           })
                         }
@@ -122,24 +168,24 @@ export function CartDrawer({
                       onClick={() =>
                         dispatch({
                           type: 'quantity',
-                          id: product.id,
-                          quantity: quantity - 1,
+                          key: line.key,
+                          quantity: line.quantity - 1,
                         })
                       }
-                      aria-label={`Kurangi ${product.name}`}
+                      aria-label={`Kurangi ${line.name}`}
                     >
                       −
                     </button>
-                    <span>{quantity}</span>
+                    <span>{line.quantity}</span>
                     <button
                       onClick={() =>
                         dispatch({
                           type: 'quantity',
-                          id: product.id,
-                          quantity: quantity + 1,
+                          key: line.key,
+                          quantity: line.quantity + 1,
                         })
                       }
-                      aria-label={`Tambah ${product.name}`}
+                      aria-label={`Tambah ${line.name}`}
                     >
                       +
                     </button>
@@ -148,9 +194,57 @@ export function CartDrawer({
               ))}
             </div>
 
-            <div className="cart-total">
-              <span>Total sementara</span>
-              <strong>{rupiah(total)}</strong>
+            <div className="cart-voucher-box">
+              <div className="voucher-input-group">
+                <input
+                  type="text"
+                  className="voucher-input"
+                  placeholder="KODE PROMO / VOUCHER"
+                  value={promoCode}
+                  onChange={(e) => setPromoCode(e.target.value.toUpperCase())}
+                  disabled={Boolean(appliedPromo) || checkingPromo}
+                />
+                {appliedPromo ? (
+                  <button
+                    type="button"
+                    className="voucher-btn remove"
+                    onClick={onRemovePromo}
+                  >
+                    Hapus
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="voucher-btn apply"
+                    disabled={!promoCode.trim() || checkingPromo}
+                    onClick={onApplyPromo}
+                  >
+                    {checkingPromo ? 'Cek…' : 'Gunakan'}
+                  </button>
+                )}
+              </div>
+              {promoMessage && (
+                <p className={`voucher-msg ${appliedPromo ? 'success' : 'error'}`} role="status">
+                  {appliedPromo ? '✓ ' : ''}{promoMessage}
+                </p>
+              )}
+            </div>
+
+            <div className="cart-summary-box">
+              <div className="summary-row">
+                <span>Subtotal</span>
+                <strong>{rupiah(subtotal)}</strong>
+              </div>
+              {appliedPromo && discountAmount > 0 && (
+                <div className="summary-row discount">
+                  <span>Potongan Voucher ({appliedPromo.code})</span>
+                  <strong className="discount-value">- {rupiah(discountAmount)}</strong>
+                </div>
+              )}
+              <div className="summary-row grand-total">
+                <span>Total Pembayaran</span>
+                <strong>{rupiah(finalTotal)}</strong>
+              </div>
             </div>
 
             <form className="checkout-form" onSubmit={submitOrder}>
@@ -220,7 +314,7 @@ export function CartDrawer({
               >
                 {submitting
                   ? 'Mencatat pesanan…'
-                  : `Pesan sekarang · ${rupiah(total)}`}
+                  : `Pesan sekarang · ${rupiah(finalTotal)}`}
               </button>
 
               <p className="checkout-note">

@@ -1,4 +1,4 @@
-import type { OrderReceipt, Product, Category, TrackedOrder } from './types'
+import type { OrderReceipt, Product, Category, TrackedOrder, CustomerBundle } from './types'
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
@@ -31,8 +31,9 @@ export type CustomerBanner = {
 
 export async function getMenu() {
   return request<{
-    categories: Array<{ id: number; name: string; slug: string; sort_order: number }>
+    categories: Array<{ id: number; name: string; slug: string; sort_order?: number }>
     products: Product[]
+    bundles?: CustomerBundle[]
     banners?: CustomerBanner[]
   }>('/menu')
 }
@@ -41,12 +42,36 @@ export function createCashOrder(input: {
   customer_name: string
   customer_phone?: string
   payment_method: 'cash'
-  items: Array<{ product_id: number; quantity: number; special_instructions?: string }>
+  promo_code?: string
+  items: Array<{ product_id?: number; bundle_id?: number; quantity: number; special_instructions?: string }>
 }, idempotencyKey: string) {
   return request<OrderReceipt>('/orders', {
     method: 'POST',
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(input),
+  })
+}
+
+export type PromoValidationResult = {
+  valid: boolean
+  message: string
+  promo?: {
+    id: number
+    code: string
+    name: string
+    discount_type: 'fixed' | 'percent'
+    discount_value: number
+    min_spend: number
+    max_discount: number | null
+  }
+  discount_amount?: number
+  discount_amount_formatted?: string
+}
+
+export function validatePromoCode(code: string, subtotal: number) {
+  return request<PromoValidationResult>('/promotions/validate', {
+    method: 'POST',
+    body: JSON.stringify({ code, subtotal }),
   })
 }
 
@@ -114,7 +139,13 @@ export type AdminDashboard = {
   }
   recent_orders: Array<{ order_number: string; customer_name: string; order_status: string; payment_status: string; total: string; created_at: string }>
 }
-export type AdminCategoryInput = Pick<AdminCategory, 'name' | 'sort_order' | 'is_active'> & { description: string | null; slug?: string }
+export type AdminCategoryInput = {
+  name: string
+  slug?: string
+  description: string | null
+  sort_order?: number
+  is_active: boolean
+}
 export type AdminProductInput = {
   category_id: number | null
   name: string
@@ -351,13 +382,20 @@ export type CashierProduct = {
 }
 
 export function getCashierProducts() {
-  return request<{ products: CashierProduct[] }>('/cashier/products')
+  return request<{ products: CashierProduct[]; bundles?: CustomerBundle[] }>('/cashier/products')
 }
 
 export function updateCashierProductAvailability(productId: number, is_available: boolean) {
   return request<{ product: CashierProduct }>(`/cashier/products/${productId}/availability`, {
     method: 'PATCH',
     body: JSON.stringify({ is_available }),
+  })
+}
+
+export function updateCashierBundleAvailability(bundleId: number, is_active: boolean) {
+  return request<{ bundle: CustomerBundle }>(`/cashier/bundles/${bundleId}/availability`, {
+    method: 'PATCH',
+    body: JSON.stringify({ is_active }),
   })
 }
 
