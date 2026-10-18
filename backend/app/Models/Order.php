@@ -9,10 +9,11 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Order extends Model
 {
     protected $fillable = [
-        'order_number', 'user_id', 'customer_name', 'customer_phone', 'order_status',
+        'order_number', 'daily_ticket_number', 'user_id', 'customer_id', 'guest_device_token',
+        'customer_name', 'customer_phone', 'order_status',
         'payment_status', 'payment_method', 'subtotal', 'discount_total',
         'points_discount', 'total', 'points_redeemed', 'pricing_snapshot',
-        'idempotency_key', 'confirmed_at', 'completed_at', 'cancelled_at',
+        'idempotency_key', 'confirmed_at', 'completed_at', 'cancelled_at', 'expires_at',
     ];
 
     protected function casts(): array
@@ -27,7 +28,13 @@ class Order extends Model
             'confirmed_at' => 'datetime',
             'completed_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'expires_at' => 'datetime',
         ];
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
     }
 
     public function items(): HasMany

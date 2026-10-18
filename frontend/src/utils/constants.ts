@@ -8,6 +8,7 @@ export const orderStatusLabels: Record<string, string> = {
   SEDANG_DIBUAT: 'Sedang dibuat',
   SIAP_DIAMBIL: 'Siap diambil',
   SELESAI: 'Selesai',
+  DIBATALKAN: 'Dibatalkan',
   MENUNGGU: 'Menunggu',
   BERHASIL: 'Terkonfirmasi',
   SIAP: 'Siap',
@@ -25,7 +26,5 @@ export const paymentStatusLabels: Record<string, string> = {
 
 export const preparationGroupLabel = (type: string): string => {
   if (type === 'food') return 'Makanan'
-  if (type === 'drink') return 'Minuman'
-  if (type === 'bundle') return 'Paket'
-  return 'Lainnya'
+  return 'Minuman'
 }

@@ -24,6 +24,24 @@ class CreateOrderService
             ]);
         }
 
+        if (!empty($data['guest_device_token'])) {
+            $activePending = Order::query()
+                ->where('guest_device_token', $data['guest_device_token'])
+                ->where('order_status', 'MENUNGGU_PEMBAYARAN')
+                ->where('payment_status', 'MENUNGGU')
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->first();
+
+            if ($activePending) {
+                $ticketLabel = $activePending->daily_ticket_number ?? $activePending->order_number;
+                throw ValidationException::withMessages([
+                    'items' => "Anda masih memiliki pesanan {$ticketLabel} yang belum dibayar di kasir. Silakan bayar pesanan tersebut atau tunggu hingga hangus untuk membuat pesanan baru.",
+                ]);
+            }
+        }
+
         return DB::transaction(function () use ($data, $idempotencyKey): Order {
             $itemsList = collect($data['items']);
             $productIds = $itemsList->pluck('product_id')->filter()->unique();
@@ -103,6 +121,7 @@ class CreateOrderService
                     $unitPriceCents = $this->toCents((string) $bundle->price);
                     $lineTotalCents = $unitPriceCents * (int) $item['quantity'];
                     $subtotalCents += $lineTotalCents;
+
                     $preparedItems[] = [
                         'product_id' => null,
                         'bundle_id' => $bundle->id,
@@ -184,7 +203,10 @@ class CreateOrderService
 
             $order = Order::create([
                 'order_number' => $this->newOrderNumber(),
+                'daily_ticket_number' => $this->newDailyTicketNumber(),
                 'user_id' => auth()->id(),
+                'customer_id' => $data['customer_id'] ?? null,
+                'guest_device_token' => $data['guest_device_token'] ?? null,
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'] ?? null,
                 'order_status' => 'MENUNGGU_PEMBAYARAN',
@@ -197,6 +219,7 @@ class CreateOrderService
                 'points_redeemed' => 0,
                 'pricing_snapshot' => $pricingSnapshot,
                 'idempotency_key' => $idempotencyKey,
+                'expires_at' => now()->addMinutes(10),
             ]);
 
             foreach ($preparedItems as $item) {
@@ -236,6 +259,13 @@ class CreateOrderService
         } while (Order::where('order_number', $number)->exists());
 
         return $number;
+    }
+
+    private function newDailyTicketNumber(): string
+    {
+        $todayCount = Order::whereDate('created_at', today())->count();
+
+        return sprintf('#%03d', $todayCount + 1);
     }
 
     private function toCents(string $amount): int

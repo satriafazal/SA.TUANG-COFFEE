@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AdminCatalogController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashierOrderController;
+use App\Http\Controllers\Api\V1\MemberAuthController;
 use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\TrackOrderController;
@@ -11,8 +12,17 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function (): void {
     Route::get('/menu', [MenuController::class, 'index'])->name('api.v1.menu.index');
     Route::post('/orders', [OrderController::class, 'store'])->name('api.v1.orders.store');
+    Route::get('/orders/my-orders', [OrderController::class, 'myOrders'])->name('api.v1.orders.my-orders');
     Route::post('/promotions/validate', [OrderController::class, 'validatePromo'])->name('api.v1.promotions.validate');
     Route::get('/orders/{orderNumber}/status', [TrackOrderController::class, 'show'])->name('api.v1.orders.status');
+    Route::post('/orders/{orderNumber}/complete', [OrderController::class, 'complete'])->name('api.v1.orders.complete');
+
+    Route::post('/members/register', [MemberAuthController::class, 'register'])->name('api.v1.members.register');
+    Route::post('/members/login', [MemberAuthController::class, 'login'])->name('api.v1.members.login');
+    Route::middleware('auth:sanctum')->group(function (): void {
+        Route::get('/members/me', [MemberAuthController::class, 'me'])->name('api.v1.members.me');
+        Route::post('/members/logout', [MemberAuthController::class, 'logout'])->name('api.v1.members.logout');
+    });
 
     Route::post('/auth/login', [AuthController::class, 'login'])->name('api.v1.auth.login');
     Route::middleware('auth:sanctum')->group(function (): void {

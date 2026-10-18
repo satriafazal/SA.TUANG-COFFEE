@@ -17,12 +17,9 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             DemoCatalogSeeder::class,
+            AdminUserSeeder::class,
+            CashierUserSeeder::class,
+            CustomerSeeder::class,
         ]);
-
-        if (config('services.cashier_seed.email')) {
-            $this->call([
-                CashierUserSeeder::class,
-            ]);
-        }
     }
 }

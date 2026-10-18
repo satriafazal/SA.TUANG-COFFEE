@@ -1,9 +1,11 @@
-import type { OrderReceipt, Product, Category, TrackedOrder, CustomerBundle } from './types'
+import type { OrderReceipt, Product, Category, TrackedOrder, CustomerBundle, CustomerProfile, CustomerOrderRecord } from './types'
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const token = localStorage.getItem('satuang-token')
+  const staffToken = localStorage.getItem('satuang-token')
+  const customerToken = localStorage.getItem('satuang-customer-token')
+  const token = path.startsWith('/members') ? customerToken : (staffToken || customerToken)
   const response = await fetch(`${API_ROOT}${path}`, {
     ...options,
     headers: {
@@ -31,7 +33,7 @@ export type CustomerBanner = {
 
 export async function getMenu() {
   return request<{
-    categories: Array<{ id: number; name: string; slug: string; sort_order?: number }>
+    categories: Category[]
     products: Product[]
     bundles?: CustomerBundle[]
     banners?: CustomerBanner[]
@@ -41,6 +43,7 @@ export async function getMenu() {
 export function createCashOrder(input: {
   customer_name: string
   customer_phone?: string
+  guest_device_token?: string
   payment_method: 'cash'
   promo_code?: string
   items: Array<{ product_id?: number; bundle_id?: number; quantity: number; special_instructions?: string }>
@@ -50,6 +53,50 @@ export function createCashOrder(input: {
     headers: { 'Idempotency-Key': idempotencyKey },
     body: JSON.stringify(input),
   })
+}
+
+export function getMyOrders(deviceToken?: string) {
+  const query = deviceToken ? `?device_token=${encodeURIComponent(deviceToken)}` : ''
+  return request<{ orders: CustomerOrderRecord[] }>(`/orders/my-orders${query}`)
+}
+
+export function registerMember(input: {
+  name: string
+  email: string
+  phone: string
+  password: string
+  password_confirmation: string
+}) {
+  return request<{
+    token: string
+    customer: CustomerProfile
+    message: string
+  }>('/members/register', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function loginMember(input: {
+  identifier: string
+  password: string
+}) {
+  return request<{
+    token: string
+    customer: CustomerProfile
+    message: string
+  }>('/members/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function getMemberMe() {
+  return request<{ customer: CustomerProfile }>('/members/me')
+}
+
+export function logoutMember() {
+  return request<{ message: string }>('/members/logout', { method: 'POST' })
 }
 
 export type PromoValidationResult = {
@@ -80,10 +127,24 @@ export function trackOrder(orderNumber: string, customerName: string) {
   return request<TrackedOrder>(`/orders/${encodeURIComponent(orderNumber)}/status?${query}`)
 }
 
+export function completeCustomerOrder(orderNumber: string, deviceToken?: string, customerName?: string) {
+  return request<{ order: CustomerOrderRecord; message: string }>(`/orders/${encodeURIComponent(orderNumber)}/complete`, {
+    method: 'POST',
+    headers: {
+      ...(deviceToken ? { 'X-Device-Token': deviceToken } : {}),
+    },
+    body: JSON.stringify({
+      device_token: deviceToken,
+      customer_name: customerName,
+    }),
+  })
+}
+
 export type StaffUser = { id: number; name: string; email: string; role: string; permissions: string[] }
 export type StaffOrder = {
   id: number
   order_number: string
+  daily_ticket_number?: string | null
   customer_name: string
   customer_phone: string | null
   order_status: string
@@ -94,6 +155,7 @@ export type StaffOrder = {
   points_discount: string
   total: string
   created_at: string
+  expires_at?: string | null
   items: Array<{ id: number; product_name_snapshot: string; item_type: string; quantity: number; unit_price: string; line_total: string; special_instructions: string | null; preparation_status: 'MENUNGGU' | 'DIPROSES' | 'SIAP' }>
   payments: Array<{ method: string; status: string; amount: string }>
 }
@@ -120,12 +182,13 @@ export type AdminCategory = Category & {
   description: string | null
   is_active: boolean
   products_count: number
+  children_count?: number
 }
 export type AdminItemType = 'food' | 'drink' | 'other'
 export type AdminProduct = Omit<Product, 'item_type' | 'category'> & {
   item_type: AdminItemType
   is_active: boolean
-  category?: Pick<AdminCategory, 'id' | 'name' | 'slug' | 'sort_order'> | null
+  category?: Pick<AdminCategory, 'id' | 'parent_id' | 'name' | 'slug' | 'item_type' | 'sort_order'> | null
 }
 export type AdminDashboard = {
   stats: {
@@ -140,7 +203,9 @@ export type AdminDashboard = {
   recent_orders: Array<{ order_number: string; customer_name: string; order_status: string; payment_status: string; total: string; created_at: string }>
 }
 export type AdminCategoryInput = {
+  parent_id?: number | null
   name: string
+  item_type?: 'drink' | 'food'
   slug?: string
   description: string | null
   sort_order?: number

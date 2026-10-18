@@ -15,8 +15,10 @@ class MenuController extends Controller
     {
         $categories = Category::query()
             ->where('is_active', true)
+            ->with('parent:id,name,slug,item_type')
+            ->orderBy('sort_order')
             ->orderBy('name')
-            ->get(['id', 'name', 'slug', 'description', 'sort_order']);
+            ->get(['id', 'parent_id', 'name', 'slug', 'item_type', 'description', 'sort_order']);
 
         $products = Product::query()
             ->where('is_active', true)
@@ -25,7 +27,7 @@ class MenuController extends Controller
                 $query->whereNull('category_id')
                     ->orWhereHas('category', fn ($category) => $category->where('is_active', true));
             })
-            ->with('category:id,name,slug')
+            ->with(['category:id,parent_id,name,slug,item_type', 'category.parent:id,name,slug,item_type'])
             ->orderBy('name')
             ->get([
                 'id',
