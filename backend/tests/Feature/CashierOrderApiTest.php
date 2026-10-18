@@ -122,4 +122,41 @@ class CashierOrderApiTest extends TestCase
 
         $this->assertDatabaseHas('orders', ['order_number' => $orderNumber]);
     }
+
+    public function test_expired_cash_order_is_auto_cancelled_and_cannot_be_confirmed(): void
+    {
+        $this->actingAs($this->cashier(), 'sanctum');
+        $orderNumber = $this->orderWithItems(['drink']);
+        DB::table('orders')->where('order_number', $orderNumber)->update([
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        // Fetching cashier orders automatically updates expired cash order to DIBATALKAN
+        $this->getJson('/api/v1/cashier/orders')->assertOk();
+
+        $this->assertDatabaseHas('orders', [
+            'order_number' => $orderNumber,
+            'order_status' => 'DIBATALKAN',
+        ]);
+
+        // Confirming payment on expired/cancelled order throws 409 Conflict
+        $this->postJson("/api/v1/cashier/orders/{$orderNumber}/confirm-payment")
+            ->assertStatus(409);
+    }
+
+    public function test_cashier_updates_preparation_status_for_order_with_bundle_items_under_drink_group(): void
+    {
+        $this->actingAs($this->cashier(), 'sanctum');
+        $orderNumber = $this->orderWithItems(['bundle', 'food']);
+        $this->postJson("/api/v1/cashier/orders/{$orderNumber}/confirm-payment")->assertOk();
+
+        $this->patchJson("/api/v1/cashier/orders/{$orderNumber}/preparation-groups", ['item_type' => 'drink', 'status' => 'SIAP'])
+            ->assertOk()
+            ->assertJsonPath('order_status', 'SEDANG_DIBUAT');
+
+        $this->assertDatabaseHas('order_items', [
+            'item_type' => 'bundle',
+            'preparation_status' => 'SIAP',
+        ]);
+    }
 }
