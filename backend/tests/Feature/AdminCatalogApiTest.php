@@ -33,11 +33,13 @@ class AdminCatalogApiTest extends TestCase
 
         $this->postJson('/api/v1/admin/categories', [
             'name' => 'Kopi Susu',
+            'item_type' => 'drink',
             'description' => 'Racikan kopi dan susu.',
             'sort_order' => 2,
             'is_active' => true,
         ])->assertCreated()
             ->assertJsonPath('category.slug', 'kopi-susu')
+            ->assertJsonPath('category.item_type', 'drink')
             ->assertJsonPath('category.sort_order', 2);
 
         $category = Category::query()->firstOrFail();
@@ -73,11 +75,13 @@ class AdminCatalogApiTest extends TestCase
 
         $this->putJson('/api/v1/admin/categories/'.$category->id, [
             'name' => 'Kopi',
+            'item_type' => 'drink',
             'description' => 'Menu berbasis kopi.',
             'sort_order' => 1,
             'is_active' => false,
         ])->assertOk()
             ->assertJsonPath('category.name', 'Kopi')
+            ->assertJsonPath('category.item_type', 'drink')
             ->assertJsonPath('category.is_active', false);
 
         $this->assertSame(4, DB::table('audit_logs')->count());
@@ -110,6 +114,49 @@ class AdminCatalogApiTest extends TestCase
         $this->deleteJson('/api/v1/admin/categories/'.$category->id)->assertNoContent();
         $this->assertDatabaseMissing('categories', ['id' => $category->id]);
         $this->assertDatabaseHas('products', ['id' => $product->id, 'category_id' => null]);
+    }
+
+    public function test_admin_can_manage_parent_and_sub_categories(): void
+    {
+        Sanctum::actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]));
+
+        // 1. Create Kategori Induk
+        $parentRes = $this->postJson('/api/v1/admin/categories', [
+            'name' => 'Minuman Baru',
+            'item_type' => 'drink',
+            'sort_order' => 1,
+            'is_active' => true,
+        ])->assertCreated()
+            ->assertJsonPath('category.slug', 'minuman-baru')
+            ->assertJsonPath('category.item_type', 'drink')
+            ->assertJsonPath('category.parent_id', null);
+
+        $parentId = $parentRes->json('category.id');
+
+        // 2. Create Sub-Kategori linked to Parent
+        $subRes = $this->postJson('/api/v1/admin/categories', [
+            'parent_id' => $parentId,
+            'name' => 'Kopi Artisanal',
+            'sort_order' => 1,
+            'is_active' => true,
+        ])->assertCreated()
+            ->assertJsonPath('category.name', 'Kopi Artisanal')
+            ->assertJsonPath('category.parent_id', $parentId)
+            ->assertJsonPath('category.item_type', 'drink')
+            ->assertJsonPath('category.parent.name', 'Minuman Baru');
+
+        $subId = $subRes->json('category.id');
+
+        // 3. Deleting parent while child exists must fail with 409
+        $this->deleteJson('/api/v1/admin/categories/'.$parentId)
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Kategori induk ini masih memiliki sub-kategori. Hapus atau pindahkan sub-kategori terlebih dahulu.');
+
+        // 4. Deleting child succeeds
+        $this->deleteJson('/api/v1/admin/categories/'.$subId)->assertNoContent();
+
+        // 5. Deleting parent now succeeds
+        $this->deleteJson('/api/v1/admin/categories/'.$parentId)->assertNoContent();
     }
 
     public function test_admin_dashboard_reports_catalog_counts(): void
