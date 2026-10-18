@@ -54,7 +54,9 @@ class AdminCatalogController extends Controller
     public function categories(): JsonResponse
     {
         $categories = Category::query()
-            ->withCount('products')
+            ->with('parent:id,name,slug,item_type')
+            ->withCount(['products', 'children'])
+            ->orderBy('sort_order')
             ->orderBy('name')
             ->get();
 
@@ -64,12 +66,27 @@ class AdminCatalogController extends Controller
     public function storeCategory(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:120'],
+            'item_type' => ['sometimes', 'string', 'in:drink,food'],
             'slug' => ['nullable', 'string', 'max:140'],
             'description' => ['nullable', 'string'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:65535'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+
+        if (!empty($data['parent_id'])) {
+            $parent = Category::findOrFail($data['parent_id']);
+            if ($parent->parent_id !== null) {
+                // Pastikan hierarki maksimal 2 level (Induk -> Sub)
+                $data['parent_id'] = $parent->parent_id;
+            }
+            if (empty($data['item_type'])) {
+                $data['item_type'] = $parent->item_type;
+            }
+        }
+
+        $data['item_type'] ??= 'drink';
         $data['description'] ??= null;
         $data['sort_order'] ??= 0;
         $data['is_active'] ??= true;
@@ -82,13 +99,15 @@ class AdminCatalogController extends Controller
             return $category;
         }, 3);
 
-        return response()->json(['category' => $category->loadCount('products')], 201);
+        return response()->json(['category' => $category->loadCount(['products', 'children'])->load('parent:id,name,slug,item_type')], 201);
     }
 
     public function updateCategory(Request $request, int $categoryId): JsonResponse
     {
         $data = $request->validate([
+            'parent_id' => ['nullable', 'integer', 'exists:categories,id', "not_in:$categoryId"],
             'name' => ['required', 'string', 'max:120'],
+            'item_type' => ['sometimes', 'string', 'in:drink,food'],
             'slug' => ['nullable', 'string', 'max:140'],
             'description' => ['nullable', 'string'],
             'sort_order' => ['sometimes', 'integer', 'min:0', 'max:65535'],
@@ -97,6 +116,17 @@ class AdminCatalogController extends Controller
 
         $category = DB::transaction(function () use ($request, $data, $categoryId): Category {
             $category = Category::query()->lockForUpdate()->findOrFail($categoryId);
+
+            if (array_key_exists('parent_id', $data) && !empty($data['parent_id'])) {
+                if ($category->children()->exists()) {
+                    throw new ConflictHttpException('Kategori yang memiliki sub-kategori tidak dapat dijadikan sub-kategori.');
+                }
+                $parent = Category::findOrFail($data['parent_id']);
+                if (empty($data['item_type'])) {
+                    $data['item_type'] = $parent->item_type;
+                }
+            }
+
             $before = $category->getAttributes();
             if (array_key_exists('slug', $data) && $data['slug'] !== null) {
                 $data['slug'] = $this->uniqueSlug($data['slug'], $data['name'], Category::class, $category->id);
@@ -104,7 +134,7 @@ class AdminCatalogController extends Controller
             $category->update($data);
             $this->audit($request, 'admin.category.updated', $category, $before, $category->fresh()->getAttributes());
 
-            return $category->fresh()->loadCount('products');
+            return $category->fresh()->loadCount(['products', 'children'])->load('parent:id,name,slug,item_type');
         }, 3);
 
         return response()->json(['category' => $category]);
@@ -114,6 +144,9 @@ class AdminCatalogController extends Controller
     {
         DB::transaction(function () use ($request, $categoryId): void {
             $category = Category::query()->lockForUpdate()->findOrFail($categoryId);
+            if ($category->children()->exists()) {
+                throw new ConflictHttpException('Kategori induk ini masih memiliki sub-kategori. Hapus atau pindahkan sub-kategori terlebih dahulu.');
+            }
             if ($category->products()->exists()) {
                 throw new ConflictHttpException('Kategori masih digunakan oleh produk. Pindahkan produk terlebih dahulu.');
             }
@@ -132,7 +165,7 @@ class AdminCatalogController extends Controller
     public function products(): JsonResponse
     {
         $products = Product::query()
-            ->with('category:id,name,slug,sort_order')
+            ->with(['category:id,name,slug,parent_id,item_type,sort_order', 'category.parent:id,name,slug,item_type'])
             ->orderBy('name')
             ->get();
 

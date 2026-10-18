@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import {
   createAdminBanner,
   createAdminBundle,
@@ -54,7 +54,7 @@ import '../../styles/admin.css'
 
 type AdminPage = 'dashboard' | 'products' | 'categories' | 'bundles' | 'promotions' | 'banners' | 'orders' | 'staff' | 'audit-logs'
 type ProductDraft = Omit<AdminProductInput, 'price' | 'category_id' | 'description' | 'image_path'> & { price: string; category_id: string; description: string; image_path: string }
-type CategoryDraft = { name: string; description: string; is_active: boolean }
+type CategoryDraft = { is_parent: boolean; parent_id: string; name: string; item_type: 'drink' | 'food'; description: string; sort_order: number; is_active: boolean }
 type BundleDraft = {
   category_id: string
   name: string
@@ -104,7 +104,7 @@ const statusNames: Record<string, string> = {
 const itemNames: Record<AdminItemType, string> = { food: 'Makanan', drink: 'Minuman', other: 'Lainnya' }
 
 const blankProduct = (): ProductDraft => ({ category_id: '', name: '', description: '', item_type: 'drink', price: '', image_path: '', allow_notes: false, is_available: true, is_active: true })
-const blankCategory = (): CategoryDraft => ({ name: '', description: '', is_active: true })
+const blankCategory = (asParent = false, defaultParentId = ''): CategoryDraft => ({ is_parent: asParent, parent_id: defaultParentId, name: '', item_type: 'drink', description: '', sort_order: 0, is_active: true })
 const blankBundle = (): BundleDraft => ({ category_id: '', name: '', description: '', price: '', image_path: '', is_active: true, components: [] })
 const blankPromotion = (): PromotionDraft => ({ code: '', name: '', description: '', discount_type: 'percent', discount_value: '10', min_spend: '0', max_discount: '', is_active: true })
 const blankBanner = (): BannerDraft => ({ title: '', subtitle: '', image_path: '', link_url: '', sort_order: '0', is_active: true })
@@ -460,17 +460,23 @@ export default function AdminApp() {
   /* -------------------------------------------------------------------------- */
   /* Handlers: Category                                                         */
   /* -------------------------------------------------------------------------- */
-  function openCategoryEditor(category: AdminCategory | null = null) {
+  function openCategoryEditor(category: AdminCategory | null = null, asParent = false) {
     setError('')
-    setCategoryDraft(
-      category
-        ? {
-            name: category.name,
-            description: category.description ?? '',
-            is_active: category.is_active,
-          }
-        : blankCategory(),
-    )
+    setNotice('')
+    if (category) {
+      setCategoryDraft({
+        is_parent: !category.parent_id,
+        parent_id: category.parent_id ? String(category.parent_id) : '',
+        name: category.name,
+        item_type: category.item_type === 'food' ? 'food' : 'drink',
+        description: category.description ?? '',
+        sort_order: category.sort_order ?? 0,
+        is_active: category.is_active,
+      })
+    } else {
+      const defaultParent = categories.find((c) => !c.parent_id)
+      setCategoryDraft(blankCategory(asParent, defaultParent ? String(defaultParent.id) : ''))
+    }
     setCategoryEditor(category)
   }
 
@@ -479,17 +485,36 @@ export default function AdminApp() {
     setBusyId(categoryEditor ? categoryEditor.id : -1)
     setError('')
     setNotice('')
+
+    let targetItemType = categoryDraft.item_type
+    let parentIdValue: number | null = null
+
+    if (!categoryDraft.is_parent) {
+      if (!categoryDraft.parent_id) {
+        setError('Silakan pilih Kategori Induk untuk sub-kategori ini.')
+        setBusyId(null)
+        return
+      }
+      parentIdValue = Number(categoryDraft.parent_id)
+      const parentCat = categories.find((c) => c.id === parentIdValue)
+      if (parentCat?.item_type) {
+        targetItemType = parentCat.item_type === 'food' ? 'food' : 'drink'
+      }
+    }
+
     const input: AdminCategoryInput = {
+      parent_id: parentIdValue,
       name: categoryDraft.name.trim(),
+      item_type: targetItemType,
       description: categoryDraft.description.trim() || null,
       is_active: categoryDraft.is_active,
-      sort_order: 0,
+      sort_order: categoryDraft.sort_order ?? 0,
     }
     try {
       if (categoryEditor) await updateAdminCategory(categoryEditor.id, input)
       else await createAdminCategory(input)
       setCategoryEditor(false)
-      setNotice(categoryEditor ? 'Perubahan kategori tersimpan.' : 'Kategori berhasil ditambahkan.')
+      setNotice(categoryEditor ? 'Perubahan kategori tersimpan.' : (categoryDraft.is_parent ? 'Kategori Induk berhasil ditambahkan.' : 'Sub-kategori berhasil ditambahkan.'))
       await refreshData()
     } catch (saveError) {
       setError(errorText(saveError))
@@ -500,6 +525,7 @@ export default function AdminApp() {
 
   async function removeCategory(category: AdminCategory) {
     if (category.products_count > 0) return
+    if ((category.children_count ?? 0) > 0) return
     if (!window.confirm(`Hapus kategori “${category.name}”?`)) return
     setBusyId(category.id)
     setError('')
@@ -954,7 +980,16 @@ export default function AdminApp() {
               <p>{currentHead.description}</p>
             </div>
             {page === 'products' && <button className="admin-button primary" onClick={() => openProductEditor()}>＋ Tambah produk</button>}
-            {page === 'categories' && <button className="admin-button primary" onClick={() => openCategoryEditor()}>＋ Tambah kategori</button>}
+            {page === 'categories' && (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button className="admin-button primary" onClick={() => openCategoryEditor(null, true)}>
+                  ＋ Tambah Kategori Induk
+                </button>
+                <button className="admin-button" onClick={() => openCategoryEditor(null, false)}>
+                  ＋ Tambah Sub-Kategori
+                </button>
+              </div>
+            )}
             {page === 'bundles' && <button className="admin-button primary" onClick={() => openBundleEditor()}>＋ Tambah paket</button>}
             {page === 'promotions' && <button className="admin-button primary" onClick={() => openPromotionEditor()}>＋ Tambah promo</button>}
             {page === 'banners' && <button className="admin-button primary" onClick={() => openBannerEditor()}>＋ Tambah banner</button>}
@@ -1151,7 +1186,22 @@ export default function AdminApp() {
                                   flexShrink: 0,
                                 }}
                               >
-                                {p.item_type === 'drink' ? '☕' : p.item_type === 'food' ? '🥐' : '◈'}
+                                {p.item_type === 'food' ? (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M18 8v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8" />
+                                    <path d="M4 8h16" />
+                                    <path d="M12 4v4" />
+                                    <path d="M8 4h8" />
+                                  </svg>
+                                ) : (
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                                    <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                                    <line x1="6" y1="1" x2="6" y2="4" />
+                                    <line x1="10" y1="1" x2="10" y2="4" />
+                                    <line x1="14" y1="1" x2="14" y2="4" />
+                                  </svg>
+                                )}
                               </div>
                             )}
                             <div>
@@ -1198,29 +1248,123 @@ export default function AdminApp() {
                   <thead>
                     <tr>
                       <th>KATEGORI</th>
+                      <th>TINGKAT</th>
+                      <th>STASIUN / TIPE</th>
                       <th>DESKRIPSI</th>
-                      <th>PRODUK</th>
+                      <th>JUMLAH</th>
                       <th>STATUS</th>
                       <th className="align-right">AKSI</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {categories.map((c) => (
-                      <tr key={c.id}>
-                        <td>
-                          <strong>{c.name}</strong>
-                        </td>
-                        <td>{c.description || '—'}</td>
-                        <td>{c.products_count} produk</td>
-                        <td><span className={`admin-status ${c.is_active ? 'good' : 'muted'}`}>{c.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
-                        <td className="align-right admin-actions">
-                          <button className="admin-icon-button" aria-label={`Ubah kategori ${c.name}`} onClick={() => openCategoryEditor(c)}>Ubah</button>
-                          <button className="admin-icon-button danger" aria-label={`Hapus kategori ${c.name}`} disabled={busyId === c.id || c.products_count > 0} title={c.products_count > 0 ? 'Pindahkan produk sebelum menghapus kategori.' : ''} onClick={() => void removeCategory(c)}>Hapus</button>
-                        </td>
-                      </tr>
-                    ))}
+                    {/* 1. Tampilkan Kategori Induk beserta Sub-Kategorinya */}
+                    {categories
+                      .filter((c) => !c.parent_id)
+                      .map((parent) => {
+                        const children = categories.filter((sub) => sub.parent_id === parent.id)
+                        return (
+                          <Fragment key={`parent-group-${parent.id}`}>
+                            <tr style={{ background: '#f5f4ef', fontWeight: 600 }}>
+                              <td>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <span style={{ background: '#111', color: '#ffdd00', fontWeight: 900, fontSize: '10px', padding: '2px 6px', borderRadius: '3px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                    INDUK
+                                  </span>
+                                  <strong>{parent.name}</strong>
+                                </div>
+                              </td>
+                              <td>
+                                <span className="admin-status" style={{ background: '#e3dfd3', color: '#111', fontWeight: 700 }}>
+                                  Kategori Induk
+                                </span>
+                              </td>
+                              <td>
+                                <span className={`admin-status ${parent.item_type === 'food' ? 'warning' : 'info'}`}>
+                                  {parent.item_type === 'food' ? 'Makanan (Kitchen)' : 'Minuman (Bar)'}
+                                </span>
+                              </td>
+                              <td>{parent.description || '—'}</td>
+                              <td>
+                                <strong style={{ fontSize: '12px' }}>{children.length} sub-kategori</strong>
+                                {parent.products_count > 0 && <small style={{ display: 'block', color: '#666' }}>{parent.products_count} produk</small>}
+                              </td>
+                              <td><span className={`admin-status ${parent.is_active ? 'good' : 'muted'}`}>{parent.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                              <td className="align-right admin-actions">
+                                <button className="admin-icon-button" aria-label={`Ubah kategori induk ${parent.name}`} onClick={() => openCategoryEditor(parent, true)}>Ubah</button>
+                                <button
+                                  className="admin-icon-button danger"
+                                  aria-label={`Hapus kategori induk ${parent.name}`}
+                                  disabled={busyId === parent.id || parent.products_count > 0 || children.length > 0}
+                                  title={children.length > 0 ? 'Hapus atau pindahkan sub-kategori terlebih dahulu.' : parent.products_count > 0 ? 'Pindahkan produk sebelum menghapus kategori.' : ''}
+                                  onClick={() => void removeCategory(parent)}
+                                >
+                                  Hapus
+                                </button>
+                              </td>
+                            </tr>
+
+                            {/* Sub-kategori dari kategori induk ini */}
+                            {children.map((sub) => (
+                              <tr key={sub.id}>
+                                <td style={{ paddingLeft: '28px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <span style={{ color: '#888', fontWeight: 700 }}>↳</span>
+                                    <strong>{sub.name}</strong>
+                                  </div>
+                                </td>
+                                <td>
+                                  <small style={{ color: '#666' }}>Sub dari {parent.name}</small>
+                                </td>
+                                <td>
+                                  <span className={`admin-status ${sub.item_type === 'food' ? 'warning' : 'info'}`} style={{ opacity: 0.85 }}>
+                                    {sub.item_type === 'food' ? 'Makanan' : 'Minuman'}
+                                  </span>
+                                </td>
+                                <td>{sub.description || '—'}</td>
+                                <td>{sub.products_count} produk</td>
+                                <td><span className={`admin-status ${sub.is_active ? 'good' : 'muted'}`}>{sub.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                                <td className="align-right admin-actions">
+                                  <button className="admin-icon-button" aria-label={`Ubah sub-kategori ${sub.name}`} onClick={() => openCategoryEditor(sub, false)}>Ubah</button>
+                                  <button
+                                    className="admin-icon-button danger"
+                                    aria-label={`Hapus sub-kategori ${sub.name}`}
+                                    disabled={busyId === sub.id || sub.products_count > 0}
+                                    title={sub.products_count > 0 ? 'Pindahkan produk sebelum menghapus kategori.' : ''}
+                                    onClick={() => void removeCategory(sub)}
+                                  >
+                                    Hapus
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        )
+                      })}
+
+                    {/* 2. Sub-kategori yang induknya tidak ditemukan (jika ada data legacy) */}
+                    {categories
+                      .filter((c) => c.parent_id && !categories.some((p) => p.id === c.parent_id))
+                      .map((c) => (
+                        <tr key={c.id}>
+                          <td><strong>{c.name}</strong></td>
+                          <td><small>Sub-kategori</small></td>
+                          <td>
+                            <span className={`admin-status ${c.item_type === 'food' ? 'warning' : 'info'}`}>
+                              {c.item_type === 'food' ? 'Makanan' : 'Minuman'}
+                            </span>
+                          </td>
+                          <td>{c.description || '—'}</td>
+                          <td>{c.products_count} produk</td>
+                          <td><span className={`admin-status ${c.is_active ? 'good' : 'muted'}`}>{c.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
+                          <td className="align-right admin-actions">
+                            <button className="admin-icon-button" onClick={() => openCategoryEditor(c, false)}>Ubah</button>
+                            <button className="admin-icon-button danger" disabled={c.products_count > 0} onClick={() => void removeCategory(c)}>Hapus</button>
+                          </td>
+                        </tr>
+                      ))}
+
                     {!categories.length && (
-                      <tr><td colSpan={5} className="admin-empty-cell">Belum ada kategori. Tambahkan kategori untuk mengelompokkan produk.</td></tr>
+                      <tr><td colSpan={7} className="admin-empty-cell">Belum ada kategori. Tambahkan Kategori Induk atau Sub-Kategori untuk mengelompokkan produk.</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -1600,9 +1744,40 @@ export default function AdminApp() {
               <label>Nama produk<input autoFocus maxLength={160} value={productDraft.name} onChange={(e) => setProductDraft({ ...productDraft, name: e.target.value })} required /></label>
               <div className="admin-form-row">
                 <label>Kategori
-                  <select value={productDraft.category_id} onChange={(e) => setProductDraft({ ...productDraft, category_id: e.target.value })}>
+                  <select
+                    value={productDraft.category_id}
+                    onChange={(e) => {
+                      const catId = e.target.value
+                      const selectedCat = categories.find((c) => String(c.id) === catId)
+                      const inheritedType = selectedCat?.item_type === 'food' ? 'food' : selectedCat?.item_type === 'drink' ? 'drink' : productDraft.item_type
+                      setProductDraft({ ...productDraft, category_id: catId, item_type: inheritedType })
+                    }}
+                  >
                     <option value="">Tanpa kategori</option>
-                    {categories.map((c) => (<option value={c.id} key={c.id}>{c.name}{c.is_active ? '' : ' · Nonaktif'}</option>))}
+                    {categories
+                      .filter((c) => !c.parent_id)
+                      .map((parent) => {
+                        const children = categories.filter((sub) => sub.parent_id === parent.id)
+                        return (
+                          <optgroup key={`optgroup-${parent.id}`} label={`Kategori Induk: ${parent.name} (${parent.item_type === 'food' ? 'Makanan' : 'Minuman'})`}>
+                            {children.map((sub) => (
+                              <option key={sub.id} value={sub.id}>
+                                {sub.name}
+                              </option>
+                            ))}
+                            <option value={parent.id}>
+                              {parent.name} (Umum / Langsung)
+                            </option>
+                          </optgroup>
+                        )
+                      })}
+                    {categories
+                      .filter((c) => c.parent_id && !categories.some((p) => p.id === c.parent_id))
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
                   </select>
                 </label>
                 <label>Jenis menu
@@ -1732,18 +1907,112 @@ export default function AdminApp() {
             <div className="admin-modal-head">
               <div>
                 <span className="admin-kicker">KATALOG MENU</span>
-                <h2 id="category-modal-title">{categoryEditor ? 'Ubah kategori' : 'Tambah kategori'}</h2>
+                <h2 id="category-modal-title">
+                  {categoryEditor
+                    ? (categoryDraft.is_parent ? 'Ubah Kategori Induk' : 'Ubah Sub-Kategori')
+                    : (categoryDraft.is_parent ? 'Tambah Kategori Induk' : 'Tambah Sub-Kategori')}
+                </h2>
               </div>
               <button className="admin-close" aria-label="Tutup" onClick={() => setCategoryEditor(false)}>×</button>
             </div>
             <form className="admin-form" onSubmit={saveCategory}>
-              <label>Nama kategori<input autoFocus maxLength={120} value={categoryDraft.name} onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })} required /></label>
-              <label>Deskripsi<textarea rows={3} value={categoryDraft.description ?? ''} onChange={(e) => setCategoryDraft({ ...categoryDraft, description: e.target.value })} /></label>
-              <label className="admin-checkbox-single"><input type="checkbox" checked={categoryDraft.is_active} onChange={(e) => setCategoryDraft({ ...categoryDraft, is_active: e.target.checked })} />Kategori aktif</label>
+              <div className="admin-form-row">
+                <label>
+                  Tingkat Kategori
+                  <select
+                    value={categoryDraft.is_parent ? 'parent' : 'sub'}
+                    disabled={categoryEditor !== null && Boolean((categoryEditor as AdminCategory).children_count && (categoryEditor as AdminCategory).children_count! > 0)}
+                    onChange={(e) => {
+                      const isParent = e.target.value === 'parent'
+                      const defaultParent = categories.find((c) => !c.parent_id)
+                      setCategoryDraft({
+                        ...categoryDraft,
+                        is_parent: isParent,
+                        parent_id: isParent ? '' : (categoryDraft.parent_id || (defaultParent ? String(defaultParent.id) : '')),
+                      })
+                    }}
+                  >
+                    <option value="parent">Kategori Induk (Utama)</option>
+                    <option value="sub">Sub-Kategori</option>
+                  </select>
+                </label>
+
+                {categoryDraft.is_parent ? (
+                  <label>
+                    Stasiun Persiapan
+                    <select
+                      value={categoryDraft.item_type}
+                      onChange={(e) => setCategoryDraft({ ...categoryDraft, item_type: e.target.value as 'drink' | 'food' })}
+                      required
+                    >
+                      <option value="drink">Minuman (Stasiun Bar)</option>
+                      <option value="food">Makanan (Stasiun Kitchen)</option>
+                    </select>
+                  </label>
+                ) : (
+                  <label>
+                    Pilih Kategori Induk
+                    <select
+                      value={categoryDraft.parent_id}
+                      onChange={(e) => {
+                        const pId = e.target.value
+                        const parent = categories.find((c) => String(c.id) === pId)
+                        setCategoryDraft({
+                          ...categoryDraft,
+                          parent_id: pId,
+                          item_type: parent?.item_type === 'food' ? 'food' : 'drink',
+                        })
+                      }}
+                      required
+                    >
+                      <option value="">-- Pilih Kategori Induk --</option>
+                      {categories.filter((c) => !c.parent_id && (!categoryEditor || c.id !== categoryEditor.id)).map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name} ({p.item_type === 'food' ? 'Makanan' : 'Minuman'})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+
+              <label>
+                {categoryDraft.is_parent ? 'Nama Kategori Induk' : 'Nama Sub-Kategori'}
+                <input
+                  autoFocus
+                  maxLength={120}
+                  value={categoryDraft.name}
+                  onChange={(e) => setCategoryDraft({ ...categoryDraft, name: e.target.value })}
+                  placeholder={categoryDraft.is_parent ? 'Contoh: Minuman, Makanan' : 'Contoh: Kopi, Non-Kopi, Camilan'}
+                  required
+                />
+              </label>
+
+              <label>
+                Deskripsi
+                <textarea
+                  rows={3}
+                  value={categoryDraft.description ?? ''}
+                  onChange={(e) => setCategoryDraft({ ...categoryDraft, description: e.target.value })}
+                  placeholder="Keterangan singkat mengenai kategori ini"
+                />
+              </label>
+
+              <label className="admin-checkbox-single">
+                <input
+                  type="checkbox"
+                  checked={categoryDraft.is_active}
+                  onChange={(e) => setCategoryDraft({ ...categoryDraft, is_active: e.target.checked })}
+                />
+                Kategori aktif
+              </label>
+
               {error && <p className="admin-alert error" role="alert">{error}</p>}
               <div className="admin-modal-actions">
                 <button type="button" className="admin-button quiet" onClick={() => setCategoryEditor(false)}>Batal</button>
-                <button className="admin-button primary" disabled={busyId !== null}>{busyId !== null ? 'Menyimpan…' : 'Simpan kategori'}</button>
+                <button className="admin-button primary" disabled={busyId !== null}>
+                  {busyId !== null ? 'Menyimpan…' : categoryDraft.is_parent ? 'Simpan Kategori Induk' : 'Simpan Sub-Kategori'}
+                </button>
               </div>
             </form>
           </section>
