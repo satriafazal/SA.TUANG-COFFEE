@@ -1,6 +1,5 @@
 import type { FormEvent } from 'react'
-import type { CustomerMode, PrototypeMember } from '../../../state/prototypeState'
-import type { CustomerBundle, Product } from '../../../types'
+import type { CustomerBundle, CustomerProfile, Product } from '../../../types'
 import { rupiah } from '../../../utils/formatters'
 
 export type CartLine = {
@@ -10,11 +9,13 @@ export type CartLine = {
   bundle_id?: number
   name: string
   price: string
+  image_path?: string | null
   allow_notes: boolean
   quantity: number
   note: string
   bundle_components?: Array<{ name: string; quantity: number }>
   product?: Product
+  bundle?: CustomerBundle
 }
 
 export type CartAction =
@@ -32,8 +33,8 @@ interface CartDrawerProps {
   discountAmount: number
   finalTotal: number
   itemCount: number
-  sessionMode: CustomerMode
-  currentMember: PrototypeMember | null
+  sessionMode: 'guest' | 'member'
+  currentMember: CustomerProfile | null
   checkoutName: string
   setCheckoutName: (val: string) => void
   checkoutPhone: string
@@ -54,6 +55,7 @@ interface CartDrawerProps {
   checkingPromo: boolean
   onApplyPromo: () => void
   onRemovePromo: () => void
+  onSwitchToMember?: () => void
 }
 
 export function CartDrawer({
@@ -81,6 +83,7 @@ export function CartDrawer({
   checkingPromo,
   onApplyPromo,
   onRemovePromo,
+  onSwitchToMember,
 }: CartDrawerProps) {
   if (!isOpen) return null
 
@@ -118,7 +121,22 @@ export function CartDrawer({
 
         {lines.length === 0 ? (
           <div className="empty-cart">
-            <span>☕</span>
+            <svg
+              viewBox="0 0 24 24"
+              width="44"
+              height="44"
+              fill="none"
+              stroke="#88816f"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ display: 'block', margin: '0 auto 12px' }}
+              aria-hidden="true"
+            >
+              <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+              <path d="M3 6h18" />
+              <path d="M16 10a4 4 0 0 1-8 0" />
+            </svg>
             <h3>Keranjangmu masih kosong</h3>
             <p>Tambahkan menu yang ingin kamu nikmati.</p>
             <button
@@ -134,11 +152,41 @@ export function CartDrawer({
               {lines.map((line) => (
                 <div className="cart-line" key={line.key}>
                   <div className="cart-line-icon">
-                    {line.item_type === 'bundle'
-                      ? '🎁'
-                      : line.item_type === 'food'
-                        ? '🥐'
-                        : '☕'}
+                    {line.image_path ? (
+                      <img
+                        src={line.image_path}
+                        alt={line.name}
+                        onError={(e) => {
+                          ;(e.currentTarget as HTMLImageElement).style.display =
+                            'none'
+                          const fallback =
+                            e.currentTarget.parentElement?.querySelector(
+                              '.cart-line-fallback',
+                            )
+                          if (fallback)
+                            (fallback as HTMLElement).style.display = 'block'
+                        }}
+                      />
+                    ) : null}
+                    <svg
+                      className="cart-line-fallback"
+                      style={{ display: line.image_path ? 'none' : 'block' }}
+                      viewBox="0 0 24 24"
+                      width="20"
+                      height="20"
+                      fill="none"
+                      stroke="#0c0d0e"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                      <line x1="6" y1="1" x2="6" y2="4" />
+                      <line x1="10" y1="1" x2="10" y2="4" />
+                      <line x1="14" y1="1" x2="14" y2="4" />
+                    </svg>
                   </div>
                   <div className="cart-line-main">
                     <strong>{line.name}</strong>
@@ -248,6 +296,36 @@ export function CartDrawer({
             </div>
 
             <form className="checkout-form" onSubmit={submitOrder}>
+              {sessionMode === 'guest' && onSwitchToMember && (
+                <div
+                  className="cart-guest-switch"
+                  style={{
+                    padding: '10px 14px',
+                    background: '#f6ede0',
+                    border: '1.5px dashed var(--accent)',
+                    borderRadius: '6px',
+                    marginBottom: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: '12px',
+                  }}
+                >
+                  <div style={{ fontSize: '12px', lineHeight: 1.4 }}>
+                    <strong style={{ display: 'block', color: 'var(--ink)' }}>Punya akun Member?</strong>
+                    <span style={{ color: '#686760' }}>Masuk untuk kumpulkan poin & cek riwayat.</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="button button-dark"
+                    style={{ minHeight: '32px', padding: '0 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                    onClick={onSwitchToMember}
+                  >
+                    Masuk
+                  </button>
+                </div>
+              )}
+
               <label>
                 Nama untuk pesanan
                 <input
@@ -318,8 +396,7 @@ export function CartDrawer({
               </button>
 
               <p className="checkout-note">
-                Harga dan ketersediaan akan divalidasi kembali sebelum pesanan
-                dibuat. Data checkout masih menggunakan backend katalog prototipe.
+                Pesanan akan diproses oleh barista setelah pembayaran tunai dikonfirmasi di kasir.
               </p>
             </form>
           </>

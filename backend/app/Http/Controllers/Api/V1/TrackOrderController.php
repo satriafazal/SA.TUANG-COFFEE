@@ -24,6 +24,7 @@ class TrackOrderController extends Controller
         return response()->json([
             'order' => [
                 'order_number' => $order->order_number,
+                'daily_ticket_number' => $order->daily_ticket_number,
                 'order_status' => $order->order_status,
                 'payment_status' => $order->payment_status,
                 'created_at' => $order->created_at,

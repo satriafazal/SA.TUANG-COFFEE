@@ -1,9 +1,9 @@
-import type { PrototypeMember, PrototypeOrder } from '../../../state/prototypeState'
+import type { CustomerProfile, CustomerOrderRecord } from '../../../types'
 import type { Screen } from '../components/CustomerHeader'
 
 interface MemberDashboardPageProps {
-  currentMember: PrototypeMember
-  currentOrders: PrototypeOrder[]
+  currentMember: CustomerProfile
+  currentOrders: CustomerOrderRecord[]
   moveTo: (screen: Screen) => void
 }
 
@@ -33,7 +33,7 @@ export function MemberDashboardPage({
             <span className="eyebrow light">SALDO POIN</span>
           </div>
           <strong>
-            {currentMember.points.toLocaleString('id-ID')}
+            {currentMember.points_balance.toLocaleString('id-ID')}
             <small> poin</small>
           </strong>
           <p>

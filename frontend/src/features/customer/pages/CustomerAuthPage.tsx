@@ -7,6 +7,8 @@ interface CustomerAuthPageProps {
   setAuthName: (val: string) => void
   authEmail: string
   setAuthEmail: (val: string) => void
+  authPhone: string
+  setAuthPhone: (val: string) => void
   authPassword: string
   setAuthPassword: (val: string) => void
   authConfirm: string
@@ -27,6 +29,8 @@ export function CustomerAuthPage({
   setAuthName,
   authEmail,
   setAuthEmail,
+  authPhone,
+  setAuthPhone,
   authPassword,
   setAuthPassword,
   authConfirm,
@@ -87,15 +91,30 @@ export function CustomerAuthPage({
           </label>
         )}
 
+        {screen === 'register' && (
+          <label>
+            Nomor HP / WhatsApp
+            <input
+              autoComplete="tel"
+              type="tel"
+              required
+              maxLength={20}
+              value={authPhone}
+              onChange={(event) => setAuthPhone(event.target.value)}
+              placeholder="08xxxxxxxxxx"
+            />
+          </label>
+        )}
+
         <label>
-          Email
+          {screen === 'login' ? 'Email atau Nomor HP/WA' : 'Email'}
           <input
-            autoComplete="email"
-            type="email"
+            autoComplete={screen === 'login' ? 'username' : 'email'}
+            type={screen === 'login' ? 'text' : 'email'}
             required
             value={authEmail}
             onChange={(event) => setAuthEmail(event.target.value)}
-            placeholder="nama@email.com"
+            placeholder={screen === 'login' ? 'nama@email.com atau 08xxxxxxxxxx' : 'nama@email.com'}
           />
         </label>
 

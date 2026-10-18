@@ -1,107 +1,212 @@
-import { useMemo } from 'react'
-import type { CustomerMode } from '../../../state/prototypeState'
+import { useMemo, useState } from 'react'
+import type { CustomerMode } from '../components/CustomerHeader'
 import type { Category, CustomerBundle, Product } from '../../../types'
 import { rupiah } from '../../../utils/formatters'
 import type { CartAction } from '../components/CartDrawer'
 
 interface MenuCataloguePageProps {
   sessionMode: CustomerMode
+  isViewOnly?: boolean
+  onStartOrder?: () => void
   itemCount: number
-  category: string
-  setCategory: (cat: string) => void
+  category?: string
+  setCategory?: (cat: string) => void
   query: string
   setQuery: (q: string) => void
   categories: Category[]
-  filtered: Product[]
+  filtered?: Product[]
+  products?: Product[]
   bundles?: CustomerBundle[]
   loading: boolean
   loadError: string
   setGuestOfferOpen: (open: boolean) => void
   setCartOpen: (open: boolean) => void
   dispatch: (action: CartAction) => void
+  onAddToCart?: (item: {
+    name: string
+    price: number
+    image_path?: string | null
+  }) => void
 }
 
 export function MenuCataloguePage({
   sessionMode,
-  itemCount,
-  category,
-  setCategory,
+  isViewOnly = false,
+  onStartOrder,
+  itemCount: _itemCount,
+  category: _category,
+  setCategory: _setCategory,
   query,
   setQuery,
   categories,
   filtered,
-  bundles = [],
+  products = [],
+  bundles: _bundles = [],
   loading,
   loadError,
   setGuestOfferOpen,
-  setCartOpen,
+  setCartOpen: _setCartOpen,
   dispatch,
+  onAddToCart,
 }: MenuCataloguePageProps) {
-  const categoryBundles = useMemo(() => {
-    return bundles.filter((b) => {
-      if (!b.is_active) return false
-      const matches = `${b.name} ${b.description ?? ''}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-      if (!matches) return false
+  const [activeParentId, setActiveParentId] = useState<number | 'all'>('all')
+  const [subCategory, setSubCategory] = useState<string>('semua')
 
-      if (category === 'semua') return true
+  const rawProducts = products.length ? products : (filtered ?? [])
 
-      const currentCat = categories.find((c) => c.slug === category)
-      if (b.category?.slug && b.category.slug === category) return true
-      if (currentCat && b.category_id === currentCat.id) return true
+  // Kategori Induk: kategori tanpa parent_id (atau fallback jika kategori lama)
+  const parentCategories = useMemo(() => {
+    const parents = categories.filter((c) => !c.parent_id)
+    if (parents.length > 0) return parents
 
-      return false
+    // Fallback sintetis jika data lama belum memiliki parent_id
+    const hasDrink = categories.some((c) => c.item_type === 'drink')
+    const hasFood = categories.some((c) => c.item_type === 'food')
+    const synthetic: Category[] = []
+    if (hasDrink) synthetic.push({ id: -1, name: 'Minuman', slug: 'minuman', item_type: 'drink' })
+    if (hasFood) synthetic.push({ id: -2, name: 'Makanan', slug: 'makanan', item_type: 'food' })
+    return synthetic
+  }, [categories])
+
+  // Sub-kategori yang sesuai dengan Kategori Induk yang sedang aktif
+  const relevantSubCategories = useMemo(() => {
+    if (activeParentId === 'all') {
+      const subs = categories.filter((c) => Boolean(c.parent_id))
+      return subs.length ? subs : categories
+    }
+    return categories.filter((c) => c.parent_id === activeParentId)
+  }, [activeParentId, categories])
+
+  // Hitungan jumlah item per Kategori Induk
+  const parentCounts = useMemo(() => {
+    const counts: Record<string | number, number> = { all: rawProducts.length }
+    parentCategories.forEach((p) => {
+      const count = rawProducts.filter((prod) => {
+        if (prod.category_id === p.id) return true
+        if (prod.category?.parent_id === p.id) return true
+        if (p.item_type && prod.item_type === p.item_type) return true
+        return false
+      }).length
+      counts[p.id] = count
     })
-  }, [bundles, query, category, categories])
+    return counts
+  }, [parentCategories, rawProducts])
 
-  const totalVisibleItems = categoryBundles.length + filtered.length
+  // Filter Produk
+  const displayedProducts = useMemo(() => {
+    return rawProducts.filter((product) => {
+      // 1. Filter Kategori Induk
+      if (activeParentId !== 'all') {
+        const parent = parentCategories.find((p) => p.id === activeParentId)
+        const matchesParent =
+          product.category_id === activeParentId ||
+          product.category?.parent_id === activeParentId ||
+          (parent?.item_type && product.item_type === parent.item_type)
+        if (!matchesParent) return false
+      }
+
+      // 2. Filter Sub-Kategori
+      if (subCategory !== 'semua') {
+        const itemCatSlug = (product.category?.slug ?? '').toLowerCase()
+        if (itemCatSlug !== subCategory.toLowerCase()) return false
+      }
+
+      // 3. Filter Kata Kunci Pencarian
+      if (query.trim()) {
+        const match = `${product.name} ${product.description ?? ''}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
+        if (!match) return false
+      }
+
+      return true
+    })
+  }, [rawProducts, activeParentId, parentCategories, subCategory, query])
+
+  const totalVisibleItems = displayedProducts.length
+
+  function handleParentTabChange(id: number | 'all') {
+    setActiveParentId(id)
+    setSubCategory('semua')
+  }
 
   return (
     <section className="catalogue-page">
       <div className="catalogue-heading">
         <div>
           <span className="eyebrow">
-            {sessionMode === 'member' ? 'PEMESANAN MEMBER' : 'PEMESANAN GUEST'} ·
-            BANJAR WIJAYA
+            {isViewOnly
+              ? 'KATALOG MENU · SA.TUANG BANJAR WIJAYA'
+              : sessionMode === 'member'
+              ? 'PEMESANAN MEMBER · BANJAR WIJAYA'
+              : 'PEMESANAN GUEST · BANJAR WIJAYA'}
           </span>
           <h1>
-            Pilih yang
-            <br />
-            <em>kamu suka.</em>
+            {isViewOnly ? (
+              <>
+                Jelajahi sajian
+                <br />
+                <em>kopi & rasa.</em>
+              </>
+            ) : (
+              <>
+                Pilih yang
+                <br />
+                <em>kamu suka.</em>
+              </>
+            )}
           </h1>
           <p>
-            {sessionMode === 'member'
+            {isViewOnly
+              ? 'Temukan ragam minuman dan sajian SA.TUANG. Klik tombol Pesan untuk mulai memesan.'
+              : sessionMode === 'member'
               ? 'Pesanan ini akan tersimpan di riwayat Member.'
               : 'Kamu memesan tanpa akun. Riwayat pesanan tersimpan di browser ini.'}
           </p>
         </div>
         <div className="catalogue-actions">
-          {sessionMode === 'guest' && (
+          {isViewOnly ? (
+            <button
+              className="button button-accent"
+              onClick={onStartOrder}
+            >
+              Mulai Pesan <span>↗</span>
+            </button>
+          ) : sessionMode === 'guest' ? (
             <button
               className="text-button"
               onClick={() => setGuestOfferOpen(true)}
             >
               Daftar Member
             </button>
-          )}
-          <button
-            className="button button-dark"
-            onClick={() => setCartOpen(true)}
-          >
-            Keranjang ({itemCount}) <span>↗</span>
-          </button>
+          ) : null}
         </div>
       </div>
 
       <section className="menu-section order-menu-section">
+        {isViewOnly && (
+          <div className="catalogue-view-only-banner">
+            <div className="view-only-text">
+              <strong>Katalog Menu SA.TUANG</strong>
+              <span>Kamu sedang dalam mode tinjau katalog. Klik "Pesan" pada sajian untuk mulai memesan.</span>
+            </div>
+            <button className="button button-dark btn-sm" onClick={onStartOrder}>
+              Pesan Sekarang <span>↗</span>
+            </button>
+          </div>
+        )}
+
         <div className="section-heading">
           <div>
             <span className="eyebrow light">DARI BAR KAMI</span>
             <h2>
               Menu pilihan<span className="accent-dot">.</span>
             </h2>
-            <p>Tambahkan menu ke keranjang untuk memesan.</p>
+            <p>
+              {isViewOnly
+                ? 'Pilih varian rasa sebelum memesan.'
+                : 'Tambahkan menu ke keranjang untuk memesan.'}
+            </p>
           </div>
           <label className="search-box">
             <span aria-hidden="true">⌕</span>
@@ -114,28 +219,61 @@ export function MenuCataloguePage({
           </label>
         </div>
 
-        <div className="category-row" aria-label="Filter kategori">
-          <button
-            className={
-              category === 'semua' ? 'category-chip selected' : 'category-chip'
-            }
-            onClick={() => setCategory('semua')}
-          >
-            Semua menu
-          </button>
-          {categories.map((item) => (
+        {/* TWO-TIER FILTER TABS: Kategori Induk & Sub-Kategori (Text-Only, Bebas Icon) */}
+        <div className="catalogue-filter-container">
+          {/* Baris 1: Tab Kategori Induk */}
+          <div className="catalogue-main-tabs" role="tablist" aria-label="Kategori Utama Menu">
             <button
-              key={item.id}
-              className={
-                category === item.slug
-                  ? 'category-chip selected'
-                  : 'category-chip'
-              }
-              onClick={() => setCategory(item.slug)}
+              type="button"
+              role="tab"
+              aria-selected={activeParentId === 'all'}
+              className={`main-tab-button ${activeParentId === 'all' ? 'active' : ''}`}
+              onClick={() => handleParentTabChange('all')}
             >
-              {item.name}
+              <span>Semua Menu</span>
+              <span className="tab-count">{parentCounts.all ?? 0}</span>
             </button>
-          ))}
+
+            {parentCategories.map((parent) => (
+              <button
+                key={parent.id}
+                type="button"
+                role="tab"
+                aria-selected={activeParentId === parent.id}
+                className={`main-tab-button ${activeParentId === parent.id ? 'active' : ''}`}
+                onClick={() => handleParentTabChange(parent.id)}
+              >
+                <span>{parent.name}</span>
+                <span className="tab-count">{parentCounts[parent.id] ?? 0}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Baris 2: Sub-Kategori Chip Dinamis (Text-Only) */}
+          {relevantSubCategories.length > 0 && (
+            <div className="catalogue-sub-chips" aria-label="Filter Sub-Kategori">
+              <button
+                type="button"
+                className={`sub-chip-button ${subCategory === 'semua' ? 'active' : ''}`}
+                onClick={() => setSubCategory('semua')}
+              >
+                {activeParentId === 'all'
+                  ? 'Semua Menu'
+                  : `Semua ${parentCategories.find((p) => p.id === activeParentId)?.name ?? ''}`}
+              </button>
+
+              {relevantSubCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`sub-chip-button ${subCategory === cat.slug ? 'active' : ''}`}
+                  onClick={() => setSubCategory(cat.slug)}
+                >
+                  {cat.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {loading ? (
@@ -153,68 +291,7 @@ export function MenuCataloguePage({
           </div>
         ) : totalVisibleItems > 0 ? (
           <div className="product-grid">
-            {categoryBundles.map((bundle, index) => {
-                const isSoldOut =
-                  !bundle.is_active ||
-                  (bundle.components &&
-                    bundle.components.some(
-                      (c) => c.product && !c.product.is_available,
-                    ))
-                return (
-                  <article className="product-card bundle-card" key={`bundle-${bundle.id}`}>
-                    <div className={`product-visual visual-${(index + 3) % 6}`}>
-                      {bundle.image_path ? (
-                        <img
-                          src={bundle.image_path}
-                          alt={bundle.name}
-                          onError={(e) => {
-                            ;(e.currentTarget as HTMLImageElement).style.display =
-                              'none'
-                          }}
-                        />
-                      ) : null}
-                      <span className="product-emoji" aria-hidden="true">
-                        🎁
-                      </span>
-                    </div>
-                    <div className="product-info">
-                      <div className="product-category">
-                        {bundle.category?.name ?? 'Paket'}
-                      </div>
-                      <h3>{bundle.name}</h3>
-                      <p>
-                        {bundle.description ||
-                          'Kombinasi hemat menu favorit pilihan kami.'}
-                      </p>
-                      {bundle.components && bundle.components.length > 0 && (
-                        <div className="bundle-contents">
-                          <strong>Termasuk:</strong>
-                          <span>
-                            {bundle.components
-                              .map(
-                                (c) =>
-                                  `${c.quantity}x ${c.product?.name ?? 'Menu'}`,
-                              )
-                              .join(', ')}
-                          </span>
-                        </div>
-                      )}
-                      <div className="product-buy">
-                        <strong>{rupiah(bundle.price)}</strong>
-                        <button
-                          className="add-button"
-                          disabled={isSoldOut}
-                          onClick={() => dispatch({ type: 'add_bundle', bundle })}
-                          aria-label={`Tambah ${bundle.name} ke keranjang`}
-                        >
-                          {isSoldOut ? 'Habis' : '+'}
-                        </button>
-                      </div>
-                    </div>
-                  </article>
-                )
-              })}
-            {filtered.map((product, index) => (
+            {displayedProducts.map((product, index) => (
               <article className="product-card" key={product.id}>
                 <div className={`product-visual visual-${index % 6}`}>
                   {product.image_path ? (
@@ -226,14 +303,26 @@ export function MenuCataloguePage({
                           'none'
                       }}
                     />
-                  ) : null}
-                  <span className="product-emoji" aria-hidden="true">
-                    {product.item_type === 'drink'
-                      ? product.name.toLowerCase().includes('matcha')
-                        ? '🍵'
-                        : '☕'
-                      : '🥐'}
-                  </span>
+                  ) : (
+                    <div className="product-visual-icon" aria-hidden="true">
+                      {product.item_type === 'food' ? (
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 8v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8" />
+                          <path d="M4 8h16" />
+                          <path d="M12 4v4" />
+                          <path d="M8 4h8" />
+                        </svg>
+                      ) : (
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                          <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                          <line x1="6" y1="1" x2="6" y2="4" />
+                          <line x1="10" y1="1" x2="10" y2="4" />
+                          <line x1="14" y1="1" x2="14" y2="4" />
+                        </svg>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="product-info">
                   <div className="product-category">
@@ -246,14 +335,32 @@ export function MenuCataloguePage({
                   </p>
                   <div className="product-buy">
                     <strong>{rupiah(product.price)}</strong>
-                    <button
-                      className="add-button"
-                      disabled={!product.is_available}
-                      onClick={() => dispatch({ type: 'add', product })}
-                      aria-label={`Tambah ${product.name} ke keranjang`}
-                    >
-                      {product.is_available ? '+' : 'Habis'}
-                    </button>
+                    {isViewOnly ? (
+                      <button
+                        className="order-cta-btn"
+                        disabled={!product.is_available}
+                        onClick={onStartOrder}
+                        title="Mulai memesan menu ini"
+                      >
+                        {product.is_available ? 'Pesan ↗' : 'Habis'}
+                      </button>
+                    ) : (
+                      <button
+                        className="add-button"
+                        disabled={!product.is_available}
+                        onClick={() => {
+                          dispatch({ type: 'add', product })
+                          onAddToCart?.({
+                            name: product.name,
+                            price: Number(product.price),
+                            image_path: product.image_path,
+                          })
+                        }}
+                        aria-label={`Tambah ${product.name} ke keranjang`}
+                      >
+                        {product.is_available ? '+' : 'Habis'}
+                      </button>
+                    )}
                   </div>
                 </div>
               </article>

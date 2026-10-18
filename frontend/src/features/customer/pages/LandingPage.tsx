@@ -43,9 +43,9 @@ export function LandingPage({
             </button>
             <button
               className="button button-outline landing-track-button"
-              onClick={() => moveTo('tracking')}
+              onClick={() => moveTo('orders')}
             >
-              Lacak Pesanan <span>⌕</span>
+              Cek Pesanan <span>⌕</span>
             </button>
             <a className="button button-outline" href="#about">
               Kenali SA.TUANG <span>↓</span>
@@ -146,7 +146,22 @@ export function LandingPage({
                       }}
                     />
                   ) : null}
-                  <span>{product.item_type === 'drink' ? '☕' : '🥐'}</span>
+                  {product.item_type === 'food' ? (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M18 8v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8" />
+                      <path d="M4 8h16" />
+                      <path d="M12 4v4" />
+                      <path d="M8 4h8" />
+                    </svg>
+                  ) : (
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                      <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                      <line x1="6" y1="1" x2="6" y2="4" />
+                      <line x1="10" y1="1" x2="10" y2="4" />
+                      <line x1="14" y1="1" x2="14" y2="4" />
+                    </svg>
+                  )}
                 </div>
                 <div className="preview-info">
                   <small>{product.category?.name ?? 'Menu'}</small>

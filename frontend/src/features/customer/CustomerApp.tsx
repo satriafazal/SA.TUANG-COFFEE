@@ -8,30 +8,27 @@ import {
 } from 'react'
 import {
   createCashOrder,
+  getMemberMe,
   getMenu,
+  getMyOrders,
+  loginMember,
+  logoutMember,
+  registerMember,
   trackOrder,
+  completeCustomerOrder,
   validatePromoCode,
   type CustomerBanner,
   type PromoValidationResult,
 } from '../../api'
-import {
-  hashPrototypePassword,
-  newGuestSession,
-  readPrototypeMembers,
-  readPrototypeOrders,
-  readPrototypeSession,
-  replacePrototypeOrder,
-  savePrototypeMembers,
-  savePrototypeOrder,
-  savePrototypeSession,
-  verifyPrototypePassword,
-  type CustomerMode,
-  type PrototypeMember,
-  type PrototypeOrder,
-  type PrototypeOrderItem,
-  type PrototypeSession,
-} from '../../state/prototypeState'
-import type { Category, CustomerBundle, Product, TrackedOrder } from '../../types'
+import type {
+  Category,
+  CustomerBundle,
+  CustomerOrderRecord,
+  CustomerProfile,
+  Product,
+  TrackedOrder,
+} from '../../types'
+import { getOrCreateDeviceToken } from '../../utils/deviceToken'
 
 import {
   CartDrawer,
@@ -39,8 +36,10 @@ import {
   type CartLine,
 } from './components/CartDrawer'
 import { CustomerFooter } from './components/CustomerFooter'
-import { CustomerHeader, type Screen } from './components/CustomerHeader'
+import { CustomerHeader, type CustomerMode, type Screen } from './components/CustomerHeader'
 import { GuestOfferModal } from './components/GuestOfferModal'
+import { FloatingCartButton } from './components/FloatingCartButton'
+import { CartToastCard, type CartToastItem } from './components/CartToastCard'
 import { CustomerAuthPage } from './pages/CustomerAuthPage'
 import { IdentityChoicePage } from './pages/IdentityChoicePage'
 import { LandingPage } from './pages/LandingPage'
@@ -67,11 +66,13 @@ function readCart(): Record<string, CartLine> {
         bundle_id: v.bundle_id,
         name: v.name || v.product?.name || 'Item',
         price: v.price || v.product?.price || '0',
+        image_path: v.image_path ?? v.product?.image_path ?? v.bundle?.image_path ?? null,
         allow_notes: v.allow_notes ?? v.product?.allow_notes ?? false,
         quantity: v.quantity || 1,
         note: v.note || '',
         bundle_components: v.bundle_components,
         product: v.product,
+        bundle: v.bundle,
       }
     }
     return normalized
@@ -93,6 +94,7 @@ function cartReducer(state: Record<string, CartLine>, action: CartAction): Recor
         product_id: action.product.id,
         name: action.product.name,
         price: action.product.price,
+        image_path: action.product.image_path ?? null,
         allow_notes: action.product.allow_notes,
         quantity: (previous?.quantity ?? 0) + 1,
         note: previous?.note ?? '',
@@ -111,6 +113,7 @@ function cartReducer(state: Record<string, CartLine>, action: CartAction): Recor
         bundle_id: action.bundle.id,
         name: action.bundle.name,
         price: action.bundle.price,
+        image_path: action.bundle.image_path ?? null,
         allow_notes: false,
         quantity: (previous?.quantity ?? 0) + 1,
         note: '',
@@ -118,6 +121,7 @@ function cartReducer(state: Record<string, CartLine>, action: CartAction): Recor
           name: c.product?.name || 'Menu',
           quantity: c.quantity,
         })),
+        bundle: action.bundle,
       },
     }
   }
@@ -139,24 +143,20 @@ function cartReducer(state: Record<string, CartLine>, action: CartAction): Recor
   return state
 }
 
-function startingScreen(session: PrototypeSession | null): Screen {
+function startingScreen(): Screen {
   if (typeof window !== 'undefined') {
+    if (localStorage.getItem('satuang-customer-token')) {
+      return 'member-home'
+    }
     if (window.location.pathname === '/menu' || window.location.hash === '#menu') {
       return 'order-menu'
     }
-  }
-  if (session?.mode === 'member') return 'member-home'
-  if (session?.mode === 'guest') {
-    return readPrototypeOrders().some(
-      (order) => order.mode === 'guest' && order.guestToken === session.token,
-    )
-      ? 'orders'
-      : 'order-menu'
   }
   return 'landing'
 }
 
 export function CustomerApp() {
+  const deviceToken = useRef(getOrCreateDeviceToken()).current
   const [menu, setMenu] = useState<Product[]>([])
   const [bundles, setBundles] = useState<CustomerBundle[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -167,47 +167,67 @@ export function CustomerApp() {
   const [category, setCategory] = useState('semua')
   const [query, setQuery] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
-  const [checkoutName, setCheckoutName] = useState('')
+  const [guestName, setGuestName] = useState(() => {
+    return localStorage.getItem('satuang-guest-name') || ''
+  })
+  const [isOrderingSession, setIsOrderingSession] = useState(() => {
+    if (typeof window !== 'undefined') {
+      if (localStorage.getItem('satuang-customer-token')) return true
+      return sessionStorage.getItem('satuang-ordering-session') === 'true'
+    }
+    return false
+  })
+  const [checkoutName, setCheckoutName] = useState(() => {
+    return localStorage.getItem('satuang-guest-name') || ''
+  })
   const [checkoutPhone, setCheckoutPhone] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [guestOfferOpen, setGuestOfferOpen] = useState(false)
+  const [cartToast, setCartToast] = useState<CartToastItem | null>(null)
+  const toastTimeoutRef = useRef<number | null>(null)
+
+  function showCartToast(item: {
+    name: string
+    price: number
+    image_path?: string | null
+  }) {
+    if (toastTimeoutRef.current) {
+      window.clearTimeout(toastTimeoutRef.current)
+    }
+    const toastItem: CartToastItem = {
+      ...item,
+      id: Date.now(),
+    }
+    setCartToast(toastItem)
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setCartToast(null)
+    }, 3500)
+  }
 
   const [promoCode, setPromoCode] = useState('')
   const [appliedPromo, setAppliedPromo] = useState<PromoValidationResult['promo'] | null>(null)
   const [promoDiscount, setPromoDiscount] = useState<number>(0)
   const [promoMessage, setPromoMessage] = useState('')
   const [checkingPromo, setCheckingPromo] = useState(false)
-  const [session, setSession] = useState<PrototypeSession | null>(() =>
-    readPrototypeSession(),
-  )
-  const [members, setMembers] = useState<PrototypeMember[]>(() =>
-    readPrototypeMembers(),
-  )
-  const [orders, setOrders] = useState<PrototypeOrder[]>(() =>
-    readPrototypeOrders(),
-  )
-  const [screen, setScreen] = useState<Screen>(() =>
-    startingScreen(readPrototypeSession()),
-  )
-  const [tracked, setTracked] = useState<
-    Record<string, TrackedOrder['order']>
-  >({})
-  const [trackingOrder, setTrackingOrder] = useState('')
-  const [trackError, setTrackError] = useState('')
+
+  // Real backend member & orders state
+  const [member, setMember] = useState<CustomerProfile | null>(null)
+  const [orders, setOrders] = useState<CustomerOrderRecord[]>([])
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false)
+
+  const [screen, setScreen] = useState<Screen>(() => startingScreen())
   const [lookupOrderNumber, setLookupOrderNumber] = useState('')
   const [lookupName, setLookupName] = useState('')
   const [lookupError, setLookupError] = useState('')
   const [lookupBusy, setLookupBusy] = useState(false)
-  const [lookupResult, setLookupResult] = useState<
-    TrackedOrder['order'] | null
-  >(null)
+  const [lookupResult, setLookupResult] = useState<TrackedOrder['order'] | null>(null)
   const [recoveryPhone, setRecoveryPhone] = useState('')
   const [recoveryError, setRecoveryError] = useState('')
-  const [recoveredOrder, setRecoveredOrder] = useState<PrototypeOrder | null>(
-    null,
-  )
+  const [recoveredOrder, setRecoveredOrder] = useState<CustomerOrderRecord | null>(null)
+
   const [authEmail, setAuthEmail] = useState('')
+  const [authPhone, setAuthPhone] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authName, setAuthName] = useState('')
   const [authConfirm, setAuthConfirm] = useState('')
@@ -215,26 +235,39 @@ export function CustomerApp() {
   const [authNotice, setAuthNotice] = useState('')
   const idempotencyKey = useRef(crypto.randomUUID())
 
-  const currentMember =
-    session?.mode === 'member'
-      ? members.find((member) => member.email === session.email) ?? null
-      : null
+  const isMember = Boolean(member)
+  const activeOrderingSession = isMember || isOrderingSession
+  const sessionMode: CustomerMode = member ? 'member' : 'guest'
+  const hasEntered = activeOrderingSession
 
-  const currentOrders = useMemo(() => {
-    if (session?.mode === 'member') {
-      return orders.filter(
-        (order) =>
-          order.mode === 'member' && order.memberEmail === session.email,
-      )
+  async function fetchOrders() {
+    setIsRefreshingOrders(true)
+    try {
+      const res = await getMyOrders(deviceToken)
+      setOrders(res.orders)
+    } catch {
+      // silently handle network error
+    } finally {
+      setIsRefreshingOrders(false)
     }
-    if (session?.mode === 'guest') {
-      return orders.filter(
-        (order) =>
-          order.mode === 'guest' && order.guestToken === session.token,
-      )
+  }
+
+  // Check existing token on mount and fetch menu + orders
+  useEffect(() => {
+    const token = localStorage.getItem('satuang-customer-token')
+    if (token) {
+      getMemberMe()
+        .then((res) => {
+          setMember(res.customer)
+          setIsOrderingSession(true)
+        })
+        .catch(() => {
+          localStorage.removeItem('satuang-customer-token')
+          setMember(null)
+        })
     }
-    return []
-  }, [orders, session])
+    fetchOrders()
+  }, [])
 
   const lines = Object.values(cart)
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0)
@@ -249,45 +282,44 @@ export function CustomerApp() {
       return
     }
     if (subtotal < appliedPromo.min_spend) {
-      setPromoMessage(
-        `Subtotal di bawah min. belanja Rp ${appliedPromo.min_spend.toLocaleString('id-ID')}`,
-      )
+      setAppliedPromo(null)
       setPromoDiscount(0)
+      setPromoMessage(`Promo ${appliedPromo.code} dibatalkan karena subtotal kurang dari minimal belanja.`)
       return
     }
-    let disc = 0
     if (appliedPromo.discount_type === 'percent') {
-      disc = Math.round(subtotal * (appliedPromo.discount_value / 100))
-      if (appliedPromo.max_discount && appliedPromo.max_discount > 0) {
-        disc = Math.min(disc, appliedPromo.max_discount)
+      let discount = Math.round(subtotal * (appliedPromo.discount_value / 100))
+      if (appliedPromo.max_discount && discount > appliedPromo.max_discount) {
+        discount = appliedPromo.max_discount
       }
+      setPromoDiscount(Math.min(discount, subtotal))
     } else {
-      disc = appliedPromo.discount_value
+      setPromoDiscount(Math.min(appliedPromo.discount_value, subtotal))
     }
-    disc = Math.min(disc, subtotal)
-    setPromoDiscount(disc)
-    setPromoMessage(`Kode promo ${appliedPromo.code} aktif`)
-  }, [appliedPromo, subtotal])
-
-  const finalTotal = Math.max(0, subtotal - promoDiscount)
+  }, [subtotal, appliedPromo])
 
   async function handleApplyPromo() {
-    if (!promoCode.trim()) return
+    if (!promoCode.trim()) {
+      setPromoMessage('Masukkan kode promo.')
+      return
+    }
     setCheckingPromo(true)
     setPromoMessage('')
     try {
-      const res = await validatePromoCode(promoCode.trim(), subtotal)
-      if (res.valid && res.promo) {
-        setAppliedPromo(res.promo)
-        setPromoDiscount(res.discount_amount ?? 0)
-        setPromoMessage(res.message)
+      const result = await validatePromoCode(promoCode.trim(), subtotal)
+      if (result.valid && result.promo) {
+        setAppliedPromo(result.promo)
+        setPromoDiscount(result.discount_amount ?? 0)
+        setPromoMessage(result.message)
       } else {
-        setPromoMessage(res.message || 'Kode promo tidak valid.')
+        setAppliedPromo(null)
+        setPromoDiscount(0)
+        setPromoMessage(result.message || 'Kode promo tidak valid.')
       }
     } catch (err) {
-      setPromoMessage(err instanceof Error ? err.message : 'Kode promo tidak valid.')
       setAppliedPromo(null)
       setPromoDiscount(0)
+      setPromoMessage(err instanceof Error ? err.message : 'Gagal memvalidasi promo.')
     } finally {
       setCheckingPromo(false)
     }
@@ -300,80 +332,122 @@ export function CustomerApp() {
     setPromoMessage('')
   }
 
-  const filtered = useMemo(() => {
-    return menu.filter((product) => {
-      const inCategory =
-        category === 'semua' || product.category?.slug === category
-      const matches = `${product.name} ${product.description ?? ''}`
-        .toLowerCase()
-        .includes(query.toLowerCase())
-      return inCategory && matches
-    })
-  }, [menu, category, query])
+  const finalTotal = Math.max(0, subtotal - promoDiscount)
 
   useEffect(() => {
-    localStorage.setItem('satuang-cart', JSON.stringify(cart))
+    try {
+      localStorage.setItem('satuang-cart', JSON.stringify(cart))
+    } catch {
+      // storage unavailable
+    }
   }, [cart])
 
   useEffect(() => {
+    let active = true
+    setLoading(true)
+    setLoadError('')
     getMenu()
       .then((data) => {
+        if (!active) return
         setMenu(data.products)
         setBundles(data.bundles ?? [])
         setCategories(data.categories)
         setBanners(data.banners ?? [])
       })
-      .catch((error: Error) => setLoadError(error.message))
-      .finally(() => setLoading(false))
+      .catch((error) => {
+        if (!active) return
+        setLoadError(
+          error instanceof Error ? error.message : 'Katalog gagal dimuat.',
+        )
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
   }, [])
 
+  const filtered = useMemo(() => {
+    return menu.filter((item) => {
+      const matchCategory =
+        category === 'semua'
+          ? true
+          : (item.category?.slug ?? '').toLowerCase() === category.toLowerCase()
+      const matchQuery =
+        !query.trim() ||
+        item.name.toLowerCase().includes(query.trim().toLowerCase())
+      return matchCategory && matchQuery
+    })
+  }, [menu, category, query])
+
   function moveTo(screenName: Screen) {
-    if (screenName === 'order-menu' && !session) {
-      const guest = newGuestSession()
-      setSession(guest)
-    }
     setScreen(screenName)
     setAuthError('')
     setAuthNotice('')
+    if (screenName === 'orders') {
+      fetchOrders()
+    }
   }
 
   function startOrdering() {
-    if (!session) {
-      const guest = newGuestSession()
-      setSession(guest)
+    if (member) {
+      setIsOrderingSession(true)
+      sessionStorage.setItem('satuang-ordering-session', 'true')
+      moveTo('order-menu')
+    } else if (isOrderingSession && guestName) {
+      moveTo('order-menu')
+    } else {
+      moveTo('identity')
     }
+  }
+
+  function handleConfirmGuestName(name: string) {
+    setGuestName(name)
+    setCheckoutName(name)
+    localStorage.setItem('satuang-guest-name', name)
+    sessionStorage.setItem('satuang-ordering-session', 'true')
+    setIsOrderingSession(true)
     moveTo('order-menu')
   }
 
-  function chooseGuest() {
-    if (session?.mode !== 'guest') {
-      const guest = newGuestSession()
-      setSession(guest)
-    }
-    setGuestOfferOpen(false)
-    setCheckoutName('')
-    setCheckoutPhone('')
-    moveTo('order-menu')
+  function resetGuestSession() {
+    sessionStorage.removeItem('satuang-ordering-session')
+    setIsOrderingSession(false)
+    moveTo('identity')
   }
+
 
   function chooseMember() {
-    if (session?.mode === 'member') moveTo('member-home')
+    if (member) moveTo('member-home')
     else moveTo('login')
   }
 
-  function signOutMember() {
-    savePrototypeSession(null)
-    setSession(null)
+  async function signOutMember() {
+    try {
+      await logoutMember()
+    } catch {
+      // ignore
+    }
+    localStorage.removeItem('satuang-customer-token')
+    sessionStorage.removeItem('satuang-ordering-session')
+    setMember(null)
+    setIsOrderingSession(false)
+    fetchOrders()
     moveTo('landing')
   }
 
   async function submitRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAuthError('')
+    const name = authName.trim()
     const email = authEmail.trim().toLowerCase()
-    if (!authName.trim()) return setAuthError('Nama wajib diisi.')
-    if (!email.includes('@')) {
-      return setAuthError('Masukkan alamat email yang valid.')
+    const phone = authPhone.trim()
+
+    if (!name) return setAuthError('Nama lengkap wajib diisi.')
+    if (!email.includes('@')) return setAuthError('Masukkan alamat email yang valid.')
+    if (!/^08[0-9]{8,12}$/.test(phone)) {
+      return setAuthError('Nomor HP/WA tidak valid. Format: 08xxxxxxxxxx (10-14 digit).')
     }
     if (authPassword.length < 8) {
       return setAuthError('Kata sandi minimal 8 karakter.')
@@ -381,95 +455,73 @@ export function CustomerApp() {
     if (authPassword !== authConfirm) {
       return setAuthError('Konfirmasi kata sandi belum cocok.')
     }
-    if (members.some((member) => member.email === email)) {
-      return setAuthError('Email ini sudah terdaftar. Silakan masuk.')
-    }
 
     try {
-      const credential = await hashPrototypePassword(authPassword)
-      const member: PrototypeMember = {
-        id: crypto.randomUUID(),
-        name: authName.trim(),
+      const res = await registerMember({
+        name,
         email,
-        points: 0,
-        passwordSalt: credential.salt,
-        passwordHash: credential.hash,
-      }
-      const updated = [member, ...members]
-      savePrototypeMembers(updated)
-      setMembers(updated)
-      const nextSession: PrototypeSession = { mode: 'member', email }
-      savePrototypeSession(nextSession)
-      setSession(nextSession)
+        phone,
+        password: authPassword,
+        password_confirmation: authConfirm,
+      })
+      localStorage.setItem('satuang-customer-token', res.token)
+      sessionStorage.setItem('satuang-ordering-session', 'true')
+      setIsOrderingSession(true)
+      setMember(res.customer)
       setAuthPassword('')
       setAuthConfirm('')
+      setAuthPhone('')
+      fetchOrders()
       moveTo('member-home')
-    } catch {
-      setAuthError('Pendaftaran belum dapat diselesaikan. Silakan coba lagi.')
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Pendaftaran Member gagal.')
     }
   }
 
   async function submitLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAuthError('')
-    const email = authEmail.trim().toLowerCase()
-    if (!email.includes('@') || !authPassword) {
-      return setAuthError('Masukkan email dan kata sandi.')
-    }
-    const member = members.find((item) => item.email === email)
-    if (!member) {
-      return setAuthError(
-        'Akun belum ditemukan. Silakan daftar Member terlebih dahulu.',
-      )
-    }
-    if (!member.passwordSalt || !member.passwordHash) {
-      return setAuthError(
-        'Akun ini belum memiliki kata sandi. Silakan daftar Member terlebih dahulu.',
-      )
+    const identifier = authEmail.trim()
+    if (!identifier || !authPassword) {
+      return setAuthError('Masukkan email/nomor HP dan kata sandi.')
     }
 
     try {
-      if (!(await verifyPrototypePassword(authPassword, member))) {
-        return setAuthError('Kata sandi tidak cocok.')
-      }
-    } catch {
-      return setAuthError('Login belum dapat diselesaikan. Silakan coba lagi.')
+      const res = await loginMember({
+        identifier,
+        password: authPassword,
+      })
+      localStorage.setItem('satuang-customer-token', res.token)
+      sessionStorage.setItem('satuang-ordering-session', 'true')
+      setIsOrderingSession(true)
+      setMember(res.customer)
+      setAuthPassword('')
+      fetchOrders()
+      moveTo('member-home')
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Email/No. HP atau kata sandi tidak cocok.')
     }
-
-    const nextSession: PrototypeSession = {
-      mode: 'member',
-      email: member.email,
-    }
-    savePrototypeSession(nextSession)
-    setSession(nextSession)
-    setAuthPassword('')
-    moveTo('member-home')
   }
 
   function passwordResetNotice() {
-    setAuthNotice('Fitur reset kata sandi belum tersedia. Silakan hubungi outlet.')
+    setAuthNotice('Untuk reset kata sandi, silakan hubungi kasir atau barista di outlet SA.TUANG.')
   }
 
   async function submitOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setCheckoutError('')
-    if (session?.mode === 'member' && !currentMember) {
-      return setCheckoutError(
-        'Sesi Member tidak ditemukan. Silakan masuk kembali.',
-      )
-    }
     setSubmitting(true)
 
     try {
-      const result = await createCashOrder(
+      await createCashOrder(
         {
-          customer_name:
-            session?.mode === 'member' && currentMember
-              ? currentMember.name.trim()
-              : checkoutName.trim(),
-          ...(session?.mode === 'guest' && checkoutPhone.trim()
+          customer_name: member ? member.name.trim() : checkoutName.trim(),
+          ...(member?.phone
+            ? { customer_phone: member.phone }
+            : checkoutPhone.trim()
             ? { customer_phone: checkoutPhone.trim() }
             : {}),
+          guest_device_token: deviceToken,
           payment_method: 'cash',
           ...(appliedPromo && promoDiscount > 0 ? { promo_code: appliedPromo.code } : {}),
           items: lines.map((line) => ({
@@ -481,34 +533,13 @@ export function CustomerApp() {
         idempotencyKey.current,
       )
 
-      const snapshot: PrototypeOrder = {
-        orderNumber: result.order.order_number,
-        customerName: result.order.customer_name,
-        customerPhone:
-          session?.mode === 'guest' ? checkoutPhone.trim() || null : null,
-        total: result.order.total,
-        createdAt: result.order.created_at,
-        orderStatus: result.order.order_status,
-        paymentStatus: result.order.payment_status,
-        mode: session?.mode ?? 'guest',
-        ...(session?.mode === 'guest' ? { guestToken: session.token } : {}),
-        ...(session?.mode === 'member' ? { memberEmail: session.email } : {}),
-        items: lines.map((line) => ({
-          name: line.name,
-          itemType: line.item_type,
-          quantity: line.quantity,
-          price: line.price,
-        })) as PrototypeOrderItem[],
-      }
-
-      savePrototypeOrder(snapshot)
-      setOrders(readPrototypeOrders())
       dispatch({ type: 'clear' })
       handleRemovePromo()
       idempotencyKey.current = crypto.randomUUID()
-      setCheckoutName(currentMember?.name ?? '')
+      setCheckoutName(member?.name ?? '')
       setCheckoutPhone('')
       setCartOpen(false)
+      await fetchOrders()
       moveTo('orders')
     } catch (error) {
       setCheckoutError(
@@ -519,30 +550,10 @@ export function CustomerApp() {
     }
   }
 
-  async function refreshOrder(order: PrototypeOrder) {
-    setTrackingOrder(order.orderNumber)
-    setTrackError('')
-    try {
-      const result = await trackOrder(order.orderNumber, order.customerName)
-      setTracked((previous) => ({
-        ...previous,
-        [order.orderNumber]: result.order,
-      }))
-      const updated = {
-        ...order,
-        orderStatus: result.order.order_status,
-        paymentStatus: result.order.payment_status,
-      }
-      replacePrototypeOrder(updated)
-      setOrders(readPrototypeOrders())
-    } catch (error) {
-      setTrackError(
-        error instanceof Error
-          ? error.message
-          : 'Status pesanan belum dapat diperbarui.',
-      )
-    } finally {
-      setTrackingOrder('')
+  function copyOrderNumber(num: string) {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(num).catch(() => {})
+      setAuthNotice(`Kode antrean ${num} berhasil disalin ke clipboard.`)
     }
   }
 
@@ -559,9 +570,7 @@ export function CustomerApp() {
       setLookupResult(result.order)
     } catch (error) {
       setLookupError(
-        error instanceof Error
-          ? error.message
-          : 'Pesanan belum ditemukan atau data belum cocok.',
+        error instanceof Error ? error.message : 'Pesanan tidak ditemukan.',
       )
     } finally {
       setLookupBusy(false)
@@ -572,45 +581,58 @@ export function CustomerApp() {
     event.preventDefault()
     setRecoveryError('')
     setRecoveredOrder(null)
+    const phone = recoveryPhone.trim()
     const match = orders.find(
-      (order) =>
-        order.customerPhone &&
-        order.customerPhone.replace(/\D/g, '') ===
-          recoveryPhone.replace(/\D/g, ''),
+      (order) => order.customer_phone && order.customer_phone.trim() === phone,
     )
     if (!match) {
-      return setRecoveryError(
-        'Tidak ditemukan pesanan dengan nomor HP tersebut pada perangkat ini.',
+      setRecoveryError(
+        'Tidak ada pesanan aktif dengan nomor HP tersebut pada perangkat ini.',
       )
+      return
     }
     setRecoveredOrder(match)
   }
 
-  async function copyOrderNumber(orderNumber: string) {
+  const [completingOrderNumber, setCompletingOrderNumber] = useState<string | null>(null)
+
+  async function handleCompleteOrder(orderNumber: string, customerName?: string) {
+    setCompletingOrderNumber(orderNumber)
     try {
-      await navigator.clipboard.writeText(orderNumber)
-      setAuthNotice('Kode antrean berhasil disalin.')
-    } catch {
-      setAuthNotice(`Kode antrean: ${orderNumber}`)
+      const res = await completeCustomerOrder(orderNumber, deviceToken, customerName)
+      setAuthNotice(res.message || 'Pesanan berhasil diselesaikan. Terima kasih!')
+      await fetchOrders()
+      if (lookupResult && lookupResult.order_number === orderNumber) {
+        setLookupResult({
+          ...lookupResult,
+          order_status: 'SELESAI',
+        })
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Pesanan belum dapat diselesaikan.')
+    } finally {
+      setCompletingOrderNumber(null)
     }
   }
 
-  const isMember = session?.mode === 'member' && currentMember !== null
-  const sessionMode: CustomerMode = session?.mode ?? 'guest'
-
   return (
-    <div className="app-shell customer-app">
+    <div className={`customer-shell screen-${screen}`}>
       <CustomerHeader
         screen={screen}
         isMember={isMember}
+        isOrderingSession={activeOrderingSession}
+        guestName={guestName}
+        currentMember={member}
         sessionMode={sessionMode}
         itemCount={itemCount}
+        hasEntered={hasEntered}
         moveTo={moveTo}
         setCartOpen={setCartOpen}
         signOutMember={signOutMember}
+        resetGuestSession={resetGuestSession}
       />
 
-      <main id="top">
+      <main className="customer-main" id="top">
         {screen === 'landing' && (
           <LandingPage
             banners={banners}
@@ -619,20 +641,6 @@ export function CustomerApp() {
             loading={loading}
             loadError={loadError}
             startOrdering={startOrdering}
-            moveTo={moveTo}
-          />
-        )}
-
-        {screen === 'tracking' && (
-          <OrderTrackingPage
-            lookupOrderNumber={lookupOrderNumber}
-            setLookupOrderNumber={setLookupOrderNumber}
-            lookupName={lookupName}
-            setLookupName={setLookupName}
-            lookupError={lookupError}
-            lookupBusy={lookupBusy}
-            lookupResult={lookupResult}
-            lookupOrder={lookupOrder}
             moveTo={moveTo}
           />
         )}
@@ -652,6 +660,8 @@ export function CustomerApp() {
             setAuthName={setAuthName}
             authEmail={authEmail}
             setAuthEmail={setAuthEmail}
+            authPhone={authPhone}
+            setAuthPhone={setAuthPhone}
             authPassword={authPassword}
             setAuthPassword={setAuthPassword}
             authConfirm={authConfirm}
@@ -667,17 +677,17 @@ export function CustomerApp() {
           />
         )}
 
-        {screen === 'member-home' && isMember && currentMember && (
+        {screen === 'member-home' && isMember && member && (
           <MemberDashboardPage
-            currentMember={currentMember}
-            currentOrders={currentOrders}
+            currentMember={member}
+            currentOrders={orders}
             moveTo={moveTo}
           />
         )}
 
-        {screen === 'member-points' && isMember && currentMember && (
+        {screen === 'member-points' && isMember && member && (
           <MemberPointsPage
-            currentMember={currentMember}
+            currentMember={member}
             moveTo={moveTo}
           />
         )}
@@ -685,6 +695,8 @@ export function CustomerApp() {
         {screen === 'order-menu' && (
           <MenuCataloguePage
             sessionMode={sessionMode}
+            isViewOnly={!activeOrderingSession}
+            onStartOrder={startOrdering}
             itemCount={itemCount}
             category={category}
             setCategory={setCategory}
@@ -692,12 +704,14 @@ export function CustomerApp() {
             setQuery={setQuery}
             categories={categories}
             filtered={filtered}
+            products={menu}
             bundles={bundles}
             loading={loading}
             loadError={loadError}
             setGuestOfferOpen={setGuestOfferOpen}
             setCartOpen={setCartOpen}
             dispatch={dispatch}
+            onAddToCart={showCartToast}
           />
         )}
 
@@ -705,14 +719,29 @@ export function CustomerApp() {
           <SavedOrdersPage
             isMember={isMember}
             sessionMode={sessionMode}
-            currentOrders={currentOrders}
-            tracked={tracked}
-            trackingOrder={trackingOrder}
-            trackError={trackError}
-            authNotice={authNotice}
+            currentOrders={orders}
             copyOrderNumber={copyOrderNumber}
-            refreshOrder={refreshOrder}
+            refreshOrders={fetchOrders}
+            isRefreshing={isRefreshingOrders}
             moveTo={moveTo}
+            onCompleteOrder={handleCompleteOrder}
+            completingOrderNumber={completingOrderNumber}
+          />
+        )}
+
+        {screen === 'tracking' && (
+          <OrderTrackingPage
+            lookupOrderNumber={lookupOrderNumber}
+            setLookupOrderNumber={setLookupOrderNumber}
+            lookupName={lookupName}
+            setLookupName={setLookupName}
+            lookupError={lookupError}
+            lookupBusy={lookupBusy}
+            lookupResult={lookupResult}
+            lookupOrder={lookupOrder}
+            moveTo={moveTo}
+            onCompleteOrder={(orderNum) => handleCompleteOrder(orderNum, lookupName)}
+            completingOrderNumber={completingOrderNumber}
           />
         )}
 
@@ -741,7 +770,31 @@ export function CustomerApp() {
           setGuestOfferOpen(false)
           moveTo('register')
         }}
-        onContinueGuest={chooseGuest}
+        onLogin={() => {
+          setGuestOfferOpen(false)
+          moveTo('login')
+        }}
+        onConfirmGuestName={(name) => {
+          setGuestOfferOpen(false)
+          handleConfirmGuestName(name)
+        }}
+        initialGuestName={guestName}
+      />
+
+      <CartToastCard
+        toast={cartToast}
+        onClose={() => setCartToast(null)}
+        onViewCart={() => {
+          setCartToast(null)
+          setCartOpen(true)
+        }}
+      />
+
+      <FloatingCartButton
+        itemCount={itemCount}
+        subtotal={subtotal}
+        onClick={() => setCartOpen(true)}
+        visible={activeOrderingSession && screen === 'order-menu' && !cartOpen && itemCount > 0}
       />
 
       <CartDrawer
@@ -753,7 +806,7 @@ export function CustomerApp() {
         finalTotal={finalTotal}
         itemCount={itemCount}
         sessionMode={sessionMode}
-        currentMember={currentMember}
+        currentMember={member}
         checkoutName={checkoutName}
         setCheckoutName={setCheckoutName}
         checkoutPhone={checkoutPhone}
@@ -765,13 +818,16 @@ export function CustomerApp() {
         promoCode={promoCode}
         setPromoCode={setPromoCode}
         appliedPromo={appliedPromo}
-        promoMessage={promoMessage}
         checkingPromo={checkingPromo}
+        promoMessage={promoMessage}
         onApplyPromo={handleApplyPromo}
         onRemovePromo={handleRemovePromo}
+        onSwitchToMember={() => {
+          setCartOpen(false)
+          moveTo('login')
+        }}
       />
     </div>
   )
 }
-
 export default CustomerApp

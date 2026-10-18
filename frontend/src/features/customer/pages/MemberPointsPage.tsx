@@ -1,8 +1,8 @@
-import type { PrototypeMember } from '../../../state/prototypeState'
+import type { CustomerProfile } from '../../../types'
 import type { Screen } from '../components/CustomerHeader'
 
 interface MemberPointsPageProps {
-  currentMember: PrototypeMember
+  currentMember: CustomerProfile
   moveTo: (screen: Screen) => void
 }
 
@@ -24,7 +24,7 @@ export function MemberPointsPage({
 
       <article className="points-summary">
         <span className="eyebrow">SALDO POIN SAAT INI</span>
-        <strong>{currentMember.points.toLocaleString('id-ID')} poin</strong>
+        <strong>{currentMember.points_balance.toLocaleString('id-ID')} poin</strong>
         <p>
           Poin baru diberikan setelah pesanan berstatus SELESAI. Penukaran poin
           menjadi potongan nominal menunggu aturan Admin.

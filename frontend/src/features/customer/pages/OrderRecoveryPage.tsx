@@ -1,14 +1,14 @@
 import type { FormEvent } from 'react'
-import type { CustomerMode, PrototypeOrder } from '../../../state/prototypeState'
+import type { CustomerOrderRecord } from '../../../types'
 import { orderStatusLabels } from '../../../utils/constants'
-import type { Screen } from '../components/CustomerHeader'
+import type { CustomerMode, Screen } from '../components/CustomerHeader'
 
 interface OrderRecoveryPageProps {
   sessionMode: CustomerMode
   recoveryPhone: string
   setRecoveryPhone: (val: string) => void
   recoveryError: string
-  recoveredOrder: PrototypeOrder | null
+  recoveredOrder: CustomerOrderRecord | null
   recoverOrder: (event: FormEvent<HTMLFormElement>) => void
   setLookupOrderNumber: (val: string) => void
   setLookupName: (val: string) => void
@@ -74,18 +74,18 @@ export function OrderRecoveryPage({
         {recoveredOrder && (
           <div className="recovered-order">
             <span className="eyebrow">KODE ANTREAN DITEMUKAN</span>
-            <strong>{recoveredOrder.orderNumber}</strong>
+            <strong>{recoveredOrder.order_number}</strong>
             <span>
-              {recoveredOrder.customerName} ·{' '}
-              {orderStatusLabels[recoveredOrder.orderStatus] ??
-                recoveredOrder.orderStatus}
+              {recoveredOrder.customer_name} ·{' '}
+              {orderStatusLabels[recoveredOrder.order_status] ??
+                recoveredOrder.order_status}
             </span>
             <button
               type="button"
               className="button button-outline"
               onClick={() => {
-                setLookupOrderNumber(recoveredOrder.orderNumber)
-                setLookupName(recoveredOrder.customerName)
+                setLookupOrderNumber(recoveredOrder.order_number)
+                setLookupName(recoveredOrder.customer_name)
                 setLookupResult(null)
                 moveTo('tracking')
               }}

@@ -514,6 +514,7 @@ a {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  height: 100%;
 }
 .product-visual {
   width: 100%;
@@ -585,16 +586,17 @@ a {
 }
 .product-info p {
   min-height: 34px;
-  margin: 0;
+  margin: 0 0 10px;
   color: #696962;
   font-size: 11px;
   line-height: 1.5;
+  flex: 1 0 auto;
 }
 .product-buy {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: 13px;
+  margin-top: auto;
   padding-top: 12px;
   border-top: 1px solid #d8d5cd;
 }
@@ -828,17 +830,29 @@ a {
 }
 .cart-line {
   display: grid;
-  grid-template-columns: 46px 1fr auto;
+  grid-template-columns: 52px 1fr auto;
   gap: 12px;
   align-items: start;
 }
 .cart-line-icon {
-  width: 44px;
-  height: 44px;
-  background: #e5d9c9;
+  width: 52px;
+  height: 40px;
+  aspect-ratio: 4 / 3;
+  background: #ede9e0;
+  border: 1.5px solid #0c0d0e;
+  box-shadow: 2px 2px 0 #0c0d0e;
+  overflow: hidden;
+  position: relative;
   display: grid;
   place-items: center;
-  font-size: 23px;
+  flex-shrink: 0;
+}
+.cart-line-icon img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 .cart-line-main {
   display: grid;
@@ -1271,7 +1285,7 @@ a {
     min-height: 38px;
   }
   .product-buy {
-    margin-top: 9px;
+    margin-top: auto;
     padding-top: 9px;
   }
   .product-buy strong {
@@ -1353,13 +1367,13 @@ a {
     gap: 14px;
   }
   .cart-line {
-    grid-template-columns: 38px 1fr auto;
+    grid-template-columns: 46px 1fr auto;
     gap: 8px;
   }
   .cart-line-icon {
-    width: 36px;
-    height: 36px;
-    font-size: 19px;
+    width: 46px;
+    height: 35px;
+    font-size: 16px;
   }
   .cart-line-main {
     font-size: 11px;
@@ -1453,3 +1467,239 @@ a {
     color: var(--ink);
   }
 }
+
+/* ==========================================================================
+   FLOATING STICKY CART BUTTON (KANAN BAWAH)
+   ========================================================================== */
+.floating-cart-btn {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 18px;
+  background: #0c0d0e;
+  color: #fff;
+  border: 2px solid #0c0d0e;
+  box-shadow: 4px 4px 0 var(--accent, #c96738);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  user-select: none;
+  animation: floatIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes floatIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.floating-cart-btn:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 var(--accent, #c96738);
+}
+.floating-cart-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 var(--accent, #c96738);
+}
+.floating-cart-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.floating-cart-icon {
+  font-size: 19px;
+  line-height: 1;
+}
+.floating-cart-badge {
+  background: var(--accent, #c96738);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 999px;
+  min-width: 22px;
+  text-align: center;
+  line-height: 1.2;
+}
+.floating-cart-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.floating-cart-empty-hint {
+  font-size: 11px;
+  color: #9da39b;
+  font-weight: 600;
+  border-left: 1px solid #333633;
+  padding-left: 10px;
+}
+.floating-cart-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-left: 1px solid #333633;
+  padding-left: 12px;
+}
+.floating-cart-price {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f7f5ef;
+}
+.floating-cart-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--accent, #c96738);
+  padding: 4px 9px;
+  border: 1px solid #0c0d0e;
+  border-radius: 2px;
+}
+
+/* ==========================================================================
+   CART TOAST CARD (POPUP PESANAN MASUK KERANJANG)
+   ========================================================================== */
+.cart-toast-card {
+  position: fixed;
+  bottom: 86px;
+  right: 24px;
+  z-index: 99;
+  width: min(calc(100vw - 32px), 360px);
+  background: #fdfbf7;
+  border: 2px solid #0c0d0e;
+  box-shadow: 5px 5px 0 #0c0d0e;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  animation: cartToastIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes cartToastIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.cart-toast-thumb {
+  width: 44px;
+  height: 44px;
+  aspect-ratio: 1;
+  background: #ede9e0;
+  border: 1.5px solid #0c0d0e;
+  box-shadow: 1.5px 1.5px 0 #0c0d0e;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+.cart-toast-thumb img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 1;
+}
+.cart-toast-thumb span {
+  font-size: 22px;
+  line-height: 1;
+}
+.cart-toast-content {
+  flex: 1;
+  min-width: 0;
+}
+.cart-toast-kicker {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1d612f;
+}
+.cart-toast-check {
+  font-size: 11px;
+  font-weight: 900;
+}
+.cart-toast-title {
+  margin: 2px 0;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #0c0d0e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cart-toast-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.cart-toast-meta strong {
+  color: var(--accent, #c96738);
+  font-weight: 800;
+}
+.cart-toast-view-btn {
+  background: transparent;
+  border: 0;
+  padding: 0;
+  color: #0c0d0e;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.cart-toast-view-btn:hover {
+  color: var(--accent, #c96738);
+}
+.cart-toast-close {
+  background: transparent;
+  border: none;
+  font-size: 20px;
+  line-height: 1;
+  color: #888;
+  cursor: pointer;
+  padding: 0 4px;
+  align-self: flex-start;
+  transition: color 0.15s ease;
+}
+.cart-toast-close:hover {
+  color: #0c0d0e;
+}
+
+@media (max-width: 640px) {
+  .floating-cart-btn {
+    bottom: 16px;
+    right: 14px;
+    left: 14px;
+    justify-content: space-between;
+    padding: 10px 14px;
+  }
+  .cart-toast-card {
+    bottom: 74px;
+    right: 14px;
+    left: 14px;
+    width: auto;
+  }
+}
+

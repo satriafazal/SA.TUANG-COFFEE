@@ -60,4 +60,53 @@ class OrderTrackingApiTest extends TestCase
         $this->getJson('/api/v1/orders/ST-261016-ABC123/status?customer_name=Orang%20Lain')
             ->assertNotFound();
     }
+
+    public function test_customer_can_mark_order_as_completed_when_ready_for_pickup(): void
+    {
+        $now = now();
+        $orderId = DB::table('orders')->insertGetId([
+            'order_number' => 'ST-261016-READY1',
+            'customer_name' => 'Budi',
+            'guest_device_token' => 'guest-dev-abc',
+            'order_status' => 'SIAP_DIAMBIL',
+            'payment_status' => 'BERHASIL',
+            'payment_method' => 'cash',
+            'subtotal' => 25000,
+            'total' => 25000,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $this->postJson('/api/v1/orders/ST-261016-READY1/complete', [
+            'device_token' => 'guest-dev-abc',
+        ])
+            ->assertOk()
+            ->assertJsonPath('order.order_status', 'SELESAI');
+
+        $this->assertDatabaseHas('orders', [
+            'id' => $orderId,
+            'order_status' => 'SELESAI',
+        ]);
+    }
+
+    public function test_customer_cannot_complete_order_if_not_ready(): void
+    {
+        $now = now();
+        DB::table('orders')->insert([
+            'order_number' => 'ST-261016-PREP1',
+            'customer_name' => 'Budi',
+            'guest_device_token' => 'guest-dev-abc',
+            'order_status' => 'SEDANG_DIBUAT',
+            'payment_status' => 'BERHASIL',
+            'payment_method' => 'cash',
+            'subtotal' => 25000,
+            'total' => 25000,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $this->postJson('/api/v1/orders/ST-261016-PREP1/complete', [
+            'device_token' => 'guest-dev-abc',
+        ])->assertStatus(409);
+    }
 }

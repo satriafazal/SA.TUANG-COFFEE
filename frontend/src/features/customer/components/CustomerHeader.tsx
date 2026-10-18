@@ -1,5 +1,7 @@
 import type { MouseEvent } from 'react'
-import type { CustomerMode } from '../../../state/prototypeState'
+import type { CustomerProfile } from '../../../types'
+
+export type CustomerMode = 'guest' | 'member'
 
 export type Screen =
   | 'landing'
@@ -16,26 +18,38 @@ export type Screen =
 interface CustomerHeaderProps {
   screen: Screen
   isMember: boolean
+  isOrderingSession: boolean
+  guestName?: string
+  currentMember?: CustomerProfile | null
   sessionMode: CustomerMode
   itemCount: number
+  hasEntered: boolean
   moveTo: (screen: Screen) => void
   setCartOpen: (open: boolean) => void
   signOutMember: () => void
+  resetGuestSession?: () => void
 }
 
 export function CustomerHeader({
   screen,
   isMember,
-  sessionMode,
+  isOrderingSession,
+  guestName,
+  currentMember,
+  sessionMode: _sessionMode,
   itemCount,
+  hasEntered,
   moveTo,
   setCartOpen,
   signOutMember,
+  resetGuestSession,
 }: CustomerHeaderProps) {
   const handleBrandClick = (event: MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault()
     moveTo('landing')
   }
+
+  const showActiveOrderTabs = isOrderingSession || isMember || screen === 'orders'
 
   return (
     <header className={`site-header customer-header ${isMember ? 'member-header' : ''}`}>
@@ -52,176 +66,126 @@ export function CustomerHeader({
         </span>
       </a>
 
-      {screen === 'landing' ? (
-        <nav className="desktop-nav" aria-label="Navigasi utama">
-          <a className="nav-link" href="#about">
-            Tentang
-          </a>
-          <button className="nav-link" onClick={() => moveTo('order-menu')}>
-            Menu
-          </button>
-          <a className="nav-link" href="#location">
-            Lokasi
-          </a>
-          <button className="nav-link" onClick={() => moveTo('tracking')}>
-            Lacak Pesanan
-          </button>
-        </nav>
-      ) : isMember ? (
-        <nav className="desktop-nav" aria-label="Navigasi Member">
-          <button className="nav-link" onClick={() => moveTo('member-home')}>
-            Dashboard
-          </button>
-          <button className="nav-link" onClick={() => moveTo('order-menu')}>
-            Pesan menu
-          </button>
-          <button className="nav-link" onClick={() => moveTo('orders')}>
-            Pesanan saya
-          </button>
-          <button className="nav-link" onClick={() => moveTo('tracking')}>
-            Lacak Pesanan
-          </button>
-          <button className="nav-link" onClick={() => moveTo('member-points')}>
-            Poin
-          </button>
-        </nav>
-      ) : (
-        <nav className="desktop-nav" aria-label="Navigasi pemesanan">
-          <button className="nav-link" onClick={() => moveTo('landing')}>
-            Beranda
-          </button>
-          <button className="nav-link" onClick={() => moveTo('order-menu')}>
-            Menu
-          </button>
-          <button className="nav-link" onClick={() => moveTo('tracking')}>
-            Lacak Pesanan
-          </button>
-          {sessionMode === 'guest' && (
-            <button className="nav-link" onClick={() => moveTo('orders')}>
-              Pesanan saya
-            </button>
-          )}
-          {sessionMode === 'guest' && (
-            <button className="nav-link" onClick={() => moveTo('identity')}>
-              Ganti cara pesan
-            </button>
-          )}
-          {screen === 'identity' && (
-            <button className="nav-link" onClick={() => moveTo('recovery')}>
-              Lupa kode antrean?
-            </button>
-          )}
-        </nav>
-      )}
-
-      {screen === 'order-menu' ? (
+      {/* Navigasi Utama: Beranda & Menu untuk semua, Pesanan hanya saat sesi pesan aktif */}
+      <nav className="desktop-nav" aria-label="Navigasi utama">
         <button
-          className="cart-trigger"
-          onClick={() => setCartOpen(true)}
-          aria-label={`Buka keranjang, ${itemCount} item`}
+          type="button"
+          className={`nav-link ${screen === 'landing' ? 'active' : ''}`}
+          onClick={() => moveTo('landing')}
         >
-          <span aria-hidden="true">▱</span>
-          <span className="cart-label">Keranjang</span>
-          <b className="cart-count">{itemCount}</b>
+          Beranda
         </button>
-      ) : isMember ? (
-        <button className="account-chip" onClick={signOutMember}>
-          Keluar
+        <button
+          type="button"
+          className={`nav-link ${screen === 'order-menu' ? 'active' : ''}`}
+          onClick={() => moveTo('order-menu')}
+        >
+          Menu
         </button>
-      ) : sessionMode === 'guest' ? (
-        <button className="account-chip" onClick={() => moveTo('orders')}>
-          Guest · Pesanan
-        </button>
-      ) : null}
+        {showActiveOrderTabs && (
+          <button
+            type="button"
+            className={`nav-link ${screen === 'orders' ? 'active' : ''}`}
+            onClick={() => moveTo('orders')}
+          >
+            Pesanan
+          </button>
+        )}
+      </nav>
 
-      <nav className="mobile-nav" aria-label="Navigasi ponsel">
-        {screen === 'landing' ? (
-          <>
-            <a className="mobile-nav-link" href="#about">
-              Tentang
-            </a>
+      {/* Area Kanan: Akun Member/Guest dan Keranjang (hanya saat aktif memesan) */}
+      <div className="header-actions">
+        {isMember ? (
+          <div className="member-profile-chip">
             <button
-              className="mobile-nav-link"
-              onClick={() => moveTo('order-menu')}
-            >
-              Menu
-            </button>
-            <a className="mobile-nav-link" href="#location">
-              Lokasi
-            </a>
-            <button
-              className="mobile-nav-link"
-              onClick={() => moveTo('tracking')}
-            >
-              Lacak Pesanan
-            </button>
-          </>
-        ) : isMember ? (
-          <>
-            <button
-              className={`mobile-nav-link ${screen === 'member-home' ? 'active' : ''}`}
+              type="button"
+              className="profile-btn"
               onClick={() => moveTo('member-home')}
+              title="Buka Dashboard Member"
             >
-              Beranda
+              <span className="member-badge">M</span>
+              <span className="member-name">{currentMember?.name || 'Member'}</span>
+              <span className="member-pts">{currentMember?.points_balance ?? 0} pts</span>
             </button>
             <button
-              className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`}
-              onClick={() => moveTo('order-menu')}
+              type="button"
+              className="sign-out-btn"
+              onClick={signOutMember}
+              title="Keluar dari akun"
             >
-              Menu
+              Keluar
             </button>
-            <button
-              className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`}
-              onClick={() => moveTo('orders')}
-            >
-              Pesanan
-            </button>
-            <button
-              className={`mobile-nav-link ${screen === 'tracking' ? 'active' : ''}`}
-              onClick={() => moveTo('tracking')}
-            >
-              Lacak
-            </button>
-            <button
-              className={`mobile-nav-link ${screen === 'member-points' ? 'active' : ''}`}
-              onClick={() => moveTo('member-points')}
-            >
-              Poin
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              className="mobile-nav-link"
-              onClick={() => moveTo('landing')}
-            >
-              Beranda
-            </button>
-            <button
-              className={`mobile-nav-link ${screen === 'tracking' ? 'active' : ''}`}
-              onClick={() => moveTo('tracking')}
-            >
-              Lacak Pesanan
-            </button>
-            {sessionMode === 'guest' && (
+          </div>
+        ) : isOrderingSession && guestName ? (
+          <div className="guest-profile-chip">
+            <div className="guest-btn" title="Memesan sebagai Guest">
+              <span className="guest-badge">Guest</span>
+              <span className="guest-name">{guestName}</span>
+            </div>
+            {resetGuestSession && (
               <button
-                className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`}
-                onClick={() => moveTo('orders')}
+                type="button"
+                className="sign-out-btn"
+                onClick={resetGuestSession}
+                title="Ganti nama atau akhiri sesi pesan"
               >
-                Pesanan Saya
+                Ganti
               </button>
             )}
-            {sessionMode === 'guest' && (
-              <button
-                className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`}
-                onClick={() => moveTo('order-menu')}
-              >
-                Menu
-              </button>
-            )}
-          </>
+          </div>
+        ) : null}
+
+        {/* Keranjang HANYA muncul jika sudah masuk sebagai member atau guest yang aktif memesan */}
+        {showActiveOrderTabs && hasEntered && (
+          <button
+            type="button"
+            className="cart-trigger header-cart-trigger"
+            onClick={() => setCartOpen(true)}
+            aria-label={`Buka keranjang belanja (${itemCount} item)`}
+          >
+            <span role="img" aria-hidden="true">🛒</span>
+            <span className="cart-label">Keranjang</span>
+            <span className="cart-count">{itemCount}</span>
+          </button>
+        )}
+      </div>
+
+      {/* Navigasi Ponsel */}
+      <nav className="mobile-nav" aria-label="Navigasi ponsel">
+        <button
+          type="button"
+          className={`mobile-nav-link ${screen === 'landing' ? 'active' : ''}`}
+          onClick={() => moveTo('landing')}
+        >
+          Beranda
+        </button>
+        <button
+          type="button"
+          className={`mobile-nav-link ${screen === 'order-menu' ? 'active' : ''}`}
+          onClick={() => moveTo('order-menu')}
+        >
+          Menu
+        </button>
+        {showActiveOrderTabs && (
+          <button
+            type="button"
+            className={`mobile-nav-link ${screen === 'orders' ? 'active' : ''}`}
+            onClick={() => moveTo('orders')}
+          >
+            Pesanan
+          </button>
+        )}
+        {isMember && (
+          <button
+            type="button"
+            className={`mobile-nav-link ${screen === 'member-home' || screen === 'member-points' ? 'active' : ''}`}
+            onClick={() => moveTo('member-home')}
+          >
+            Member
+          </button>
         )}
       </nav>
     </header>
   )
 }
+
