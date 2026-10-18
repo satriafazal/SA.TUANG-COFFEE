@@ -1,38 +1,51 @@
-# Batas Prototipe Customer Web
+# Batas Prototipe & Status Produksi Customer Web
 
-Dokumen ini mencatat mana yang sudah dapat dicoba di Customer Web dan mana yang masih simulasi. Jangan gunakan data atau akun prototipe untuk pelanggan sungguhan.
+Dokumen ini mencatat perkembangan sistem Customer Web SA.TUANG COFFEE dari tahap prototipe (*client-side mock*) menuju tahap **Production-Ready (Database Pusat & Autentikasi Server)**.
 
-## Cakupan yang sudah dibuat
+---
 
-- Landing page informasional khusus SA.TUANG COFFEE Banjar Wijaya; pemesanan hanya dimulai melalui tombol **Pesan Sekarang**.
-- Pilihan Member atau Guest. Saat Guest dipilih, pelanggan dapat memilih **Daftar Member** atau **Tidak, lanjut sebagai Guest**.
-- Login/registrasi Member demo dengan tampilan terpisah: dashboard/profil ringkas, daftar pesanan, dan halaman poin.
-- Katalog, filter kategori, pencarian, keranjang, catatan item jika didukung menu, dan checkout Cash menggunakan katalog/API backend yang tersedia.
-- Daftar kode antrean, pembaruan status melalui API, salin kode antrean, dan halaman publik **Lacak Pesanan**. Pelanggan dapat memasukkan kode antrean + nama untuk melacak status lewat API tanpa sesi Guest di browser. Jika kode antrean hilang, tersedia pemulihan simulasi via nomor HP.
-- Helper Guest tampil terus di bawah field HP: “Mohon simpan kode antrean. Nomor HP dapat digunakan untuk memulihkan kode antrean.”
+## Perkembangan Arsitektur Produksi (Terbaru)
 
-## Simulasi yang belum produksi
+Sistem Customer Web telah ditingkatkan dari ketergantungan `localStorage / prototypeState` menuju arsitektur server nyata:
 
-| Bagian | Perilaku sekarang | Yang diperlukan untuk implementasi nyata |
+1. **Autentikasi Member Nyata (Server-Side Auth):**
+   - Registrasi dan login Member kini 100% diproses oleh backend Laravel dengan tabel `customers`.
+   - Menggunakan hashing kata sandi aman (`bcrypt`), validasi email unik, nomor HP/WhatsApp wajib (format `08...`), dan penerbitan token sesi `Laravel Sanctum`.
+   - Fitur hashing lokal Web Crypto di browser dan data demo di `prototypeState` telah dipensiunkan.
+
+2. **Alur Pemesanan Guest Tanpa Ribet (Zero-Friction Self Pick-up):**
+   - Pelanggan tamu (*Guest*) dapat langsung memesan cukup dengan mengisi **Nama Pemesan / Panggilan** tanpa dipaksa mengisi nomor HP atau nomor meja.
+   - Sesuai model operasional **Self Pick-up di Bar (ala Kopi Tuku / Starbucks)**, pelanggan menerima **Nomor Tiket Harian Singkat** (contoh: **#042**) untuk ditunjukkan ke kasir saat pembayaran.
+
+3. **5 Lapis Pengamanan Anti-Spam Cash:**
+   - **Device Lock (Max 1 Pending Order):** Setiap perangkat tamu diidentifikasi dengan `guest_device_token`. Pelanggan tidak dapat membuat pesanan tunai baru jika masih memiliki pesanan `MENUNGGU_PEMBAYARAN` yang aktif.
+   - **Auto-Expire 10 Menit:** Pesanan tunai yang tidak dibayar ke kasir dalam 10 menit otomatis hangus (`DIBATALKAN`) di server.
+   - **Barista Gatekeeper:** Barista hanya menyeduh pesanan yang statusnya sudah dikonfirmasi LUNAS oleh kasir. Bahan baku 100% aman dari pesanan fiktif.
+   - **Pencarian Tiket Kasir:** Kasir dapat mencari pesanan dengan cepat menggunakan nomor tiket 3-digit atau nama pelanggan.
+   - **Rate Limiting:** Server membatasi percobaan akses dan pendaftaran akun dari IP yang sama.
+
+4. **Penyimpanan Pesanan Terpusat:**
+   - Endpoint `GET /api/v1/orders/my-orders` mengambil riwayat pesanan aktif dan selesai langsung dari database pusat berdasarkan `device_token` (untuk Guest) atau identitas akun Member.
+
+---
+
+## Status Fitur Saat Ini
+
+| Bagian | Status Implementasi | Catatan Operasional |
 |---|---|---|
-| Akun Member | Profil dan kredensial demo berada di `localStorage`; kata sandi demo disimpan sebagai hash PBKDF2 bersalt di browser. Ini bukan autentikasi server. | Endpoint registrasi/login aman, validasi email, pengelolaan sesi, kebijakan kata sandi, rate limit, reset email, dan pengujian keamanan. Jangan memakai akun prototipe sebagai akun nyata. |
-| Sesi Guest | Token demo disimpan di `localStorage` agar sesi bertahan setelah refresh di browser yang sama. | Sesi Guest server-side dengan cookie `HttpOnly`, `Secure`, dan `SameSite`, rotasi/expiry token, pembatasan akses, serta kebijakan retensi. Menghapus data browser atau berganti perangkat dapat menghilangkan akses. |
-| Pelacakan pesanan | Halaman publik menerima kode antrean dan nama lalu meminta status ke API; sesi/token Guest browser tidak diperlukan. Salah satu data yang tidak cocok tidak mengembalikan pesanan. | Simpan kode antrean. Nama bukan bukti kepemilikan yang cukup jika digunakan sendiri. Tambahkan rate limit/monitoring dan evaluasi kebijakan privasi; pemulihan ketika kode antrean juga hilang harus memverifikasi kepemilikan melalui OTP provider. |
-| Pemulihan kode antrean | Nomor HP hanya mencocokkan data demo yang tersimpan pada browser ini. Tidak ada OTP atau pencarian backend; setelah semua data browser terhapus, mock tidak dapat memulihkan pesanan. | Verifikasi kepemilikan melalui OTP dari provider, pembatasan percobaan, masa berlaku kode, audit, dan alur dukungan ketika HP tidak dapat diakses. Nama dan jumlah item saja bukan bukti kepemilikan. |
-| Poin Member | Saldo dummy; daftar transaksi poin belum tersambung ke backend. | Ledger append-only untuk earn/redeem/restore/expire, pemberian hanya saat pesanan `SELESAI`, aturan penukaran nominal, pembatalan/refund, koreksi kompensasi beralasan dan beridentitas admin, serta izin perubahan aturan. |
-| VA/QRIS | Pilihan ditampilkan nonaktif dan belum dapat dipakai. | Pemilihan provider, pembuatan instruksi pembayaran, webhook bertanda tangan, rekonsiliasi, penanganan kedaluwarsa/refund, dan uji sandbox/live. Jangan menandai lunas hanya dari redirect browser. |
-| Email dan notifikasi | Reset password hanya menampilkan pemberitahuan demo; tidak ada email/SMS/WhatsApp yang dikirim. | Provider, template, persetujuan, retry, pencatatan status pengiriman, dan pencegahan kebocoran informasi pelanggan. |
-| Profil outlet | Alamat tingkat jalan/patokan dan tautan peta masih perlu persetujuan pemilik outlet. Jam operasional terkini belum dimasukkan. | Verifikasi alamat, jam, kanal resmi, foto, aset merek, promosi, dan informasi yang boleh dipublikasikan. |
-| Poin dan identitas pada order | Order dibuat oleh API Cash yang tersedia; asosiasi Member/Guest untuk daftar pelanggan masih berupa metadata browser. | Relasi akun/guest server-side dan aturan akses riwayat/nota di backend, dengan verifikasi kepemilikan yang sesuai. |
+| **Akun Member** | **Produksi (Real DB & Sanctum)** | Tabel `customers` di MySQL/PostgreSQL. Mendukung login dengan Email atau No. HP + Password min. 8 karakter. |
+| **Sesi Guest & Anti-Spam** | **Produksi (Device Lock & Auto-Expire)** | Token perangkat anonim (`guest_device_token`), proteksi spam 1 pesanan pending, auto-expire 10 menit. |
+| **Nomor Tiket Antrean** | **Produksi (`daily_ticket_number`)** | Nomor antrean harian singkat (misal `#001`, `#002`) yang di-reset setiap hari untuk panggilan bar. |
+| **Riwayat Pesanan** | **Produksi (`my-orders`)** | Terhubung langsung ke database pusat Laravel via API. |
+| **Poin Loyalitas** | **Dasar (Tersimpan di DB)** | Poin bertambah otomatis saat kasir mengonfirmasi pembayaran. Aturan penukaran reward menunggu konfigurasi lanjutan. |
+| **Metode Pembayaran** | **Cash di Kasir (Siap)** | Pelanggan bayar Tunai atau QRIS statis di meja kasir. Integrasi payment gateway otomatis (Midtrans/Xendit) dapat ditambahkan saat dibutuhkan. |
+| **Cetak Nota / KOT** | **Browser Print Ready** | Kasir mencetak struk invoice dan KOT dapur via dialog cetak browser (standar printer thermal 80mm/72mm). |
 
-## Sebelum digunakan untuk pelanggan
+---
 
-1. Selesaikan autentikasi, sesi Guest, pembatasan akses order, dan kebijakan privasi/retensi di backend.
-2. Sepakati aturan poin dan kembangkan ledger sebelum menunjukkan saldo atau menjanjikan reward.
-3. Integrasikan payment provider dan notifikasi nyata; pastikan status backend mengikuti webhook/konfirmasi yang tervalidasi.
-4. Konfirmasi alamat, jam, konten publik, harga, ketersediaan, serta persetujuan penggunaan data dan komunikasi dengan pihak SA.TUANG.
-5. Uji alur pembatalan/refund, koneksi gagal, refresh, browser/perangkat berbeda, aksesibilitas, dan responsivitas sebelum rilis.
+## Rekomendasi Sebelum Peluncuran Publik (Go-Live)
 
-Admin Web tersedia di `/admin`: login role `admin`, dashboard operasional, CRUD kategori/produk, paket menu (bundle builder), promo/voucher potongan diskon, banner pengumuman gerai, daftar & pelacakan seluruh pesanan, pengelolaan akun staf (kasir & admin) dengan proteksi akun mandiri, serta riwayat audit log lengkap. Aturan poin dan integrasi payment gateway digital ditunda sesuai keputusan bisnis terbuka.
-
-Customer Web dan Kasir masih memerlukan UAT sebelum digunakan operasional. Checkout Cash memanggil API; VA/QRIS belum diaktifkan. Cetak invoice/KOT menggunakan dialog cetak browser, bukan integrasi printer perangkat langsung.
+1. Jalankan `php artisan storage:link` di server agar gambar produk dan banner terhubung.
+2. Atur konfigurasi `.env` ke `APP_ENV=production` dan `APP_DEBUG=false`.
+3. Ganti kata sandi akun bawaan seeder admin (`admin@satuang.test`) dan kasir (`kasir@satuang.test`) dengan kata sandi produksi yang aman.
+4. Buat cron job / background worker di server untuk menjalankan pembersihan order berkala (`php artisan schedule:run`).

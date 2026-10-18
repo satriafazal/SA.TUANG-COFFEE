@@ -27,9 +27,10 @@ Dokumen ini menjadi acuan perancangan skema PostgreSQL 17 dan migrasi aplikasi. 
 ## 4. Domain dan Entitas Kandidat
 
 ### Identitas dan akses
-- `users`: akun Member dan staf, identitas login, status akun.
-- `roles`, `permissions`, dan pivot role-permission/user-role atau model policy yang setara.
-- Profil pelanggan dapat dipisah dari akun autentikasi agar Guest tetap didukung.
+- `users`: akun staf (admin & kasir), identitas login, role, status akun.
+- `roles`, `permissions`, dan pivot `user_permissions`.
+- `customers`: akun Member terpisah dari staf (`name`, `email` unique, `phone` unique format 08, `password` bcrypt, `points_balance`).
+- Profil pelanggan tamu (Guest) didukung tanpa akun menggunakan `guest_device_token`.
 
 ### Katalog dan ketersediaan
 - `categories`, `products` (nama, deskripsi, harga aktif, jenis makanan/minuman, catatan diizinkan, status publikasi).
@@ -43,7 +44,7 @@ Dokumen ini menjadi acuan perancangan skema PostgreSQL 17 dan migrasi aplikasi. 
 - Snapshot diskon yang diterapkan disimpan pada order/order item; perubahan aturan tidak mengubah order lama.
 
 ### Pesanan dan status
-- `orders`: public order number unik, customer/member optional, nama pelanggan snapshot, status order, total, metode pemenuhan (pickup bila relevan), waktu.
+- `orders`: public order number unik (`order_number`), nomor tiket panggil harian (`daily_ticket_number` misal `#042`), relasi member (`customer_id`), token perangkat tamu (`guest_device_token`), batas waktu pembayaran tunai (`expires_at`), nama pelanggan snapshot, status order, total, metode pembayaran, waktu.
 - `order_items`: snapshot produk/harga/kuantitas/catatan dan referensi komponen bundle bila relevan.
 - Status kesiapan disimpan pada tiap item pesanan, tetapi UI Kasir memperbarui seluruh item dengan `item_type` yang sama secara sekaligus; kelompok Makanan, Minuman, dan Lainnya tetap independen.
 - `order_status_history` dan riwayat status item: status lama/baru, aktor, waktu, alasan opsional.

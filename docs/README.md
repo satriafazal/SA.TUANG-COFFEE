@@ -9,7 +9,12 @@ Dokumen produk dan rancangan sistem:
 
 ## Status implementasi
 
-Customer Web sudah dibuat dan diuji pada browser; autentikasi Member, sesi Guest, poin, serta pemulihan nomor HP masih belum merupakan layanan produksi. Checkout Cash memanggil API backend; VA/QRIS belum diaktifkan.
+Customer Web telah siap produksi (*Production-Ready*):
+- **Member Server-Side Auth:** Registrasi dan login Member terhubung penuh ke tabel `customers` database Laravel dengan kata sandi bcrypt aman, nomor HP/WhatsApp wajib (format `08...`), dan token Laravel Sanctum.
+- **Pemesanan Guest Zero-Friction:** Tamu dapat memesan cukup dengan Nama Panggilan tanpa dipaksa mengisi nomor HP/meja, mendukung mobilitas pelanggan yang suka berpindah meja di area cafe.
+- **Model Operasional Self Pick-up di Bar (ala Kopi Tuku / Starbucks):** Pelanggan menerima nomor tiket antrean harian singkat (misal: `#042`) untuk ditunjukkan ke kasir saat pembayaran dan dipanggil di bar saat pesanan siap.
+- **Proteksi Anti-Spam Cash Multi-Lapis:** Device Lock (maksimal 1 pesanan tunai pending per perangkat), batas waktu pembayaran 10 menit (auto-expire), dan Barista Gatekeeper (barista hanya meracik setelah kasir konfirmasi lunas).
+- **Riwayat Terpusat:** Riwayat pesanan tersimpan di database pusat dan dapat dipantau langsung melalui tab "Pesanan Saya".
 
 Cashier Web tersedia di `/kasir`, memakai autentikasi dan API backend, dengan antrean aktif/selesai, konfirmasi Cash, status persiapan per kelompok Makanan/Minuman/Lainnya, ketersediaan menu, dan cetak invoice + KOT melalui dialog cetak browser. Antarmuka kasir tidak menampilkan label demo/prototipe. Akun tetap harus disediakan lewat pengelolaan staf yang berwenang; tidak ada akun/credential bawaan.
 
@@ -23,23 +28,23 @@ Admin Web tersedia di `/admin` dengan autentikasi Sanctum khusus role `admin`. M
 - **Kelola Staf:** Pengelolaan akun Kasir dan Administrator (tambah, ubah, aktivasi/nonaktivasi dengan proteksi akun diri sendiri).
 - **Log Aktivitas:** Penelusuran audit log mutasi data sensitif dengan rekaman snapshot perubahan (before/after).
 
-### Menyiapkan akun Admin & Kasir pertama
+### Akun Bawaan (Default Seeder)
 
-Seeder membaca konfigurasi dari environment/secret manager secara privat (kata sandi minimal 12 karakter):
+Untuk kemudahan pengujian dan operasional, seluruh akun bawaan telah diintegrasikan langsung ke dalam `DatabaseSeeder` tanpa memerlukan konfigurasi variabel pada `.env`. Cukup jalankan perintah:
 
-1. **Akun Admin:**
-   Atur `ADMIN_SEED_NAME`, `ADMIN_SEED_EMAIL`, dan `ADMIN_SEED_PASSWORD`, lalu jalankan:
-   ```bash
-   php artisan db:seed --class='Database\Seeders\AdminUserSeeder'
-   ```
+```bash
+php artisan db:seed
+```
 
-2. **Akun Kasir:**
-   Atur `CASHIER_SEED_NAME`, `CASHIER_SEED_EMAIL`, dan `CASHIER_SEED_PASSWORD`, lalu jalankan:
-   ```bash
-   php artisan db:seed --class='Database\Seeders\CashierUserSeeder'
-   ```
+Perintah di atas akan secara otomatis menginisialisasi katalog menu demo beserta akun-akun pengujian siap pakai yang mudah diketik:
 
-Kedua seeder aman dijalankan ulang (idempotent), menyimpan hash kata sandi aman, tidak menampilkan credential, dan tidak mengubah akun yang sudah ada.
+| Peran | URL Login / Akses | Identifier / Email | Kata Sandi | Keterangan |
+|---|---|---|---|---|
+| **Administrator** | `/admin` | `admin@satuang.test` | `admin123` | Akses penuh dashboard manajemen |
+| **Kasir** | `/kasir` | `kasir@satuang.test` | `kasir123` | Akses antrean POS & konfirmasi pembayaran |
+| **Customer (Member)** | Tab Profil / `/login` | `member@satuang.test` atau `081234567890` | `member123` | Akun demo pelanggan (saldo awal 250 poin) |
+
+*Catatan: Seluruh seeder bersifat aman dijalankan berulang kali (*idempotent*) dan mengamankan kata sandi menggunakan hash bcrypt.*
 
 ## Menjalankan frontend lokal
 
