@@ -79,12 +79,23 @@ class CashierOrderController extends Controller
             'q' => ['nullable', 'string', 'max:160'],
         ]);
 
+        Order::query()
+            ->where('order_status', 'MENUNGGU_PEMBAYARAN')
+            ->where('payment_status', 'MENUNGGU')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now())
+            ->update([
+                'order_status' => 'DIBATALKAN',
+                'cancelled_at' => now(),
+            ]);
+
         $orders = Order::query()
             ->where('order_status', '!=', 'SELESAI')
             ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('order_status', $status))
             ->when($filters['q'] ?? null, function (Builder $query, string $term): void {
                 $query->where(fn (Builder $nested) => $nested
                     ->where('order_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('daily_ticket_number', 'ilike', '%'.$term.'%')
                     ->orWhere('customer_name', 'ilike', '%'.$term.'%'));
             })
             ->with(['items', 'payments'])
@@ -103,6 +114,7 @@ class CashierOrderController extends Controller
             ->when($filters['q'] ?? null, function (Builder $query, string $term): void {
                 $query->where(fn (Builder $nested) => $nested
                     ->where('order_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('daily_ticket_number', 'ilike', '%'.$term.'%')
                     ->orWhere('customer_name', 'ilike', '%'.$term.'%'));
             })
             ->with(['items', 'payments'])
@@ -117,6 +129,13 @@ class CashierOrderController extends Controller
     {
         $order = DB::transaction(function () use ($request, $orderNumber): Order {
             $order = Order::where('order_number', $orderNumber)->lockForUpdate()->firstOrFail();
+            if ($order->expires_at && $order->expires_at->isPast()) {
+                $order->update([
+                    'order_status' => 'DIBATALKAN',
+                    'cancelled_at' => now(),
+                ]);
+                throw new ConflictHttpException('Batas waktu pembayaran tunai telah kedaluwarsa. Pesanan dibatalkan.');
+            }
             if ($order->payment_method !== 'cash' || $order->payment_status !== 'MENUNGGU' || $order->order_status !== 'MENUNGGU_PEMBAYARAN') {
                 throw new ConflictHttpException('Pembayaran ini tidak dapat dikonfirmasi ulang atau bukan pembayaran Cash.');
             }
@@ -137,7 +156,13 @@ class CashierOrderController extends Controller
                 'payment_status' => 'BERHASIL',
                 'order_status' => 'PESANAN_DITERIMA',
                 'confirmed_at' => $now,
+                'expires_at' => null,
             ]);
+
+            if ($order->customer_id && ($customer = \App\Models\Customer::find($order->customer_id))) {
+                $earnedPoints = max(1, (int) floor((float) $order->total / 10000));
+                $customer->increment('points_balance', $earnedPoints);
+            }
             $order->statusHistory()->create([
                 'from_status' => 'MENUNGGU_PEMBAYARAN',
                 'to_status' => 'PESANAN_DITERIMA',
@@ -168,7 +193,17 @@ class CashierOrderController extends Controller
                 throw new ConflictHttpException('Kategori hanya dapat diperbarui saat pesanan diterima atau sedang dibuat.');
             }
 
-            $items = $order->items()->where('item_type', $data['item_type'])->lockForUpdate()->get();
+            $targetType = $data['item_type'];
+            $items = $order->items()
+                ->where(function ($query) use ($targetType) {
+                    if ($targetType === 'drink') {
+                        $query->whereIn('item_type', ['drink', 'bundle']);
+                    } else {
+                        $query->where('item_type', $targetType);
+                    }
+                })
+                ->lockForUpdate()
+                ->get();
             if ($items->isEmpty()) {
                 throw new ConflictHttpException('Kategori tersebut tidak ditemukan pada pesanan ini.');
             }
