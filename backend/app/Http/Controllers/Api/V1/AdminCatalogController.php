@@ -227,7 +227,7 @@ class AdminCatalogController extends Controller
         ]);
 
         $file = $request->file('image');
-        $extension = $file->getClientOriginalExtension() ?: 'jpg';
+        $extension = $file->extension() ?: 'jpg';
         $filename = Str::random(24) . '.' . strtolower($extension);
         $path = $file->storeAs('products', $filename, 'public');
 
@@ -245,11 +245,31 @@ class AdminCatalogController extends Controller
         ]);
 
         $url = $data['url'];
-        $scheme = parse_url($url, PHP_URL_SCHEME);
-        if (!in_array(strtolower($scheme ?? ''), ['http', 'https'], true)) {
+        $parsed = parse_url($url);
+        $scheme = strtolower($parsed['scheme'] ?? '');
+        if (!in_array($scheme, ['http', 'https'], true)) {
             return response()->json([
                 'message' => 'Protokol URL tidak didukung. Gunakan HTTP atau HTTPS.',
             ], 422);
+        }
+
+        $host = strtolower($parsed['host'] ?? '');
+        if (empty($host) || in_array($host, ['localhost', '127.0.0.1', '::1'], true) || str_ends_with($host, '.local') || str_ends_with($host, '.internal')) {
+            return response()->json([
+                'message' => 'Alamat host URL tidak diizinkan.',
+            ], 422);
+        }
+
+        if (!app()->environment('testing')) {
+            $ip = gethostbyname($host);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                $isPublic = filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+                if (!$isPublic) {
+                    return response()->json([
+                        'message' => 'Alamat URL mengarah ke jaringan privat/lokal yang tidak diizinkan.',
+                    ], 422);
+                }
+            }
         }
 
         try {
@@ -314,8 +334,9 @@ class AdminCatalogController extends Controller
                 'filename' => $filename,
             ], 201);
         } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Gagal mengambil gambar dari URL: ' . $e->getMessage(), ['url' => $url]);
             return response()->json([
-                'message' => 'Gagal mengambil gambar dari URL: ' . $e->getMessage(),
+                'message' => 'Gagal mengambil gambar dari URL eksternal. Pastikan URL dapat diakses publik.',
             ], 422);
         }
     }
