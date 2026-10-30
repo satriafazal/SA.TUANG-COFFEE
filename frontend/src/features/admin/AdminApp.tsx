@@ -868,39 +868,52 @@ export default function AdminApp() {
     }, 0)
   }, [bundleDraft.components, products])
 
-  if (sessionChecking) return <div className="admin-loading"><span className="admin-spinner" />Memeriksa sesi Admin…</div>
+  if (sessionChecking) return <div className="admin-loading" role="status"><span className="admin-spinner" />Memeriksa sesi…</div>
 
   if (!staff) {
     return (
       <main className="admin-login-page">
-        <form className="admin-login-card" onSubmit={handleLogin}>
-          <a className="admin-brand" href="/" aria-label="SA.TUANG COFFEE beranda">
+        <section className="admin-login">
+          <a className="admin-brand" href="/" aria-label="SA.TUANG COFFEE">
             <span className="admin-brand-mark">S</span>
             <span>
-              <strong>SA.TUANG COFFEE</strong>
-              <small>BANJAR WIJAYA</small>
+              <strong>SA.TUANG</strong>
+              <small>COFFEE · BANJAR WIJAYA</small>
             </span>
           </a>
-          <div className="admin-login-heading">
-            <span className="admin-kicker">PANEL ADMINISTRASI</span>
-            <h1>Selamat datang.</h1>
-            <p>Masuk dengan akun Admin yang telah diberikan akses.</p>
-          </div>
-          {loginError && <p className="admin-alert error" role="alert">{loginError}</p>}
-          <label>
-            Email
-            <input type="email" autoComplete="username" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} required />
-          </label>
-          <label>
-            Kata sandi
-            <input type="password" autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} required />
-          </label>
-          <button className="admin-button primary full" disabled={loginBusy}>
-            {loginBusy ? 'Memeriksa…' : 'Masuk ke Admin'}
-            <span aria-hidden="true">→</span>
-          </button>
-          <a className="admin-back-link" href="/">← Kembali ke halaman pelanggan</a>
-        </form>
+          <span className="admin-eyebrow">PANEL ADMINISTRASI</span>
+          <h1>Masuk Admin</h1>
+          <p className="admin-login-intro">Gunakan akun staf SA.TUANG COFFEE untuk membuka dashboard dan manajemen outlet.</p>
+          <form onSubmit={handleLogin} className="admin-login-form">
+            <label>
+              Email
+              <input
+                type="email"
+                required
+                autoComplete="username"
+                value={loginEmail}
+                onChange={(event) => setLoginEmail(event.target.value)}
+                placeholder="nama@contoh.com"
+              />
+            </label>
+            <label>
+              Kata sandi
+              <input
+                type="password"
+                required
+                autoComplete="current-password"
+                value={loginPassword}
+                onChange={(event) => setLoginPassword(event.target.value)}
+                placeholder="Kata sandi"
+              />
+            </label>
+            {loginError && <p className="admin-error" role="alert">{loginError}</p>}
+            <button className="admin-button primary wide" disabled={loginBusy}>
+              {loginBusy ? 'Memeriksa akun…' : 'Masuk ke Admin'}
+            </button>
+          </form>
+          <a className="admin-back-home" href="/">← Kembali ke halaman pelanggan</a>
+        </section>
       </main>
     )
   }
