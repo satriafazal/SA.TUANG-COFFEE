@@ -1,163 +1,175 @@
-# Software Requirements Specification (SRS)
+# Software Requirements Specification (SRS) — SA.TUANG COFFEE
 
-## 1. Tujuan dan Konvensi
+## 1. Tujuan dan Konvensi Dokumen
 
-Dokumen ini mendefinisikan kebutuhan fungsional dan nonfungsional SA.TUANG COFFEE untuk menjadi acuan desain database, implementasi, pengujian, dan UAT. Istilah **HARUS** menunjukkan kebutuhan wajib MVP; **SEBAIKNYA** menunjukkan rekomendasi yang perlu dipertahankan kecuali disepakati lain.
+Dokumen ini mendefinisikan seluruh kebutuhan fungsional (*Functional Requirements*) dan nonfungsional (*Non-Functional Requirements*) untuk sistem web **SA.TUANG COFFEE**. Dokumen ini menjadi acuan mutlak spesifikasi teknis, skema database, antarmuka REST API, pengujian otomatis, serta kesiapan operasional produksi.
 
-## 2. Ruang Lingkup Sistem
+Konvensi kata kunci:
+* **HARUS (SHALL / MUST):** Kebutuhan wajib yang telah terimplementasi dan harus selalu dipenuhi oleh sistem.
+* **SEBAIKNYA (SHOULD):** Rekomendasi teknis operasional untuk performa dan skalabilitas lanjutan.
 
-Sistem terdiri dari Customer Web, Cashier Web, Admin/Marketing Web, REST API/backend, dan PostgreSQL 17. Barista/dapur tidak menggunakan aplikasi. Semua antarmuka HARUS responsif; pengalaman kasir dioptimalkan untuk tablet/ponsel dan admin untuk desktop dengan dukungan ponsel.
+---
 
-## 3. Aktor dan Hak Akses
+## 2. Ruang Lingkup Sistem & Arsitektur
 
-| Aktor | Hak utama |
-|---|---|
-| Guest | Membaca katalog, membuat pesanan, melihat status dengan nomor pesanan dan nama sesuai kebijakan privasi. |
-| Member | Hak Guest, akun, riwayat pesanan, saldo/riwayat poin, penukaran poin. |
-| Kasir | Membaca antrean aktif dan detail, memvalidasi pembayaran tunai, mengonfirmasi pesanan berbayar, memperbarui status, ketersediaan, dan mengakses pesanan selesai. |
-| Admin/Marketing | Mengelola master data, paket/promo/voucher, konten, staf, dan konfigurasi yang diizinkan. |
-| Admin berwenang poin | Mengubah aturan poin dan membuat koreksi poin dengan alasan; hak ini tidak otomatis diberikan ke semua kasir. |
-| Backend | Validasi, transaksi, otorisasi, pencatatan audit, pembayaran, poin, dan pekerjaan cetak. |
+Sistem dirancang dengan arsitektur modern terpisah (*decoupled architecture*):
+* **Backend API:** Laravel 11 (PHP 8.2+) RESTful API, PostgreSQL 17 / SQLite (pengujian), Laravel Sanctum untuk otentikasi token berbasis bearer.
+* **Frontend SPA:** React 19 + TypeScript + Vite, Vanilla CSS modular dengan design system terkurasi (Space Grotesk, DM Sans, Georgia), mendukung 3 portal dalam satu bundel SPA:
+  1. **Customer Web (`/`):** Katalog menu hierarkis, pemesanan Guest & Member, pelacakan pesanan real-time.
+  2. **Cashier Web (`/kasir`):** Antrean kasir, countdown 10 menit, manajemen kesiapan grup Food/Drink, konfirmasi pembayaran cash.
+  3. **Admin Web (`/admin`):** Dashboard analitik, CRUD katalog 2-tingkat, bundle, promo, banner, manajemen staf (RBAC), dan audit trail.
+* **Barista & Dapur:** Tidak menggunakan aplikasi digital mandiri; bekerja menggunakan tiket Kitchen Order Ticket (KOT) fisik dan koordinasi visual antrean kasir.
 
-Akses harus ditolak secara default jika role/permission tidak memenuhi kebijakan.
+---
 
-## 4. Kebutuhan Fungsional
+## 3. Aktor dan Matriks Hak Akses (RBAC)
 
-### 4.1 Autentikasi dan otorisasi
-- **FR-AUTH-01** Landing page Customer Web bersifat informasional; tombol **Pesan Sekarang** membuka pilihan Member atau Guest. Memilih Guest harus menawarkan daftar Member atau melanjutkan tanpa akun.
-- **FR-AUTH-02** Sistem HARUS mendukung registrasi dan autentikasi Member dengan email dan kata sandi.
-- **FR-AUTH-03** Sesi Guest dan kode antrean adalah identitas yang berbeda. Sesi harus dapat mempertahankan riwayat Guest setelah refresh; untuk produksi gunakan sesi server-side melalui cookie `HttpOnly`, `Secure`, `SameSite`, bukan token tepercaya di `localStorage`.
-- **FR-AUTH-04** Nomor HP Guest bersifat opsional. Helper “Mohon simpan kode antrean. Nomor HP dapat digunakan untuk memulihkan kode antrean.” selalu ditampilkan. Pemulihan produksi harus memverifikasi kepemilikan nomor (mis. OTP); nama dan jumlah item hanya petunjuk pencarian, bukan bukti.
-- **FR-AUTH-05** Sistem HARUS mengautentikasi staf dan membatasi endpoint/UI sesuai role dan permission.
-- **FR-AUTH-06** Aksi sensitif harus mencatat aktor dan waktu.
+| Aktor / Peran | Lingkup Akses | Hak Akses Utama |
+| :--- | :--- | :--- |
+| **Guest (Tamu)** | Customer Web (`/`) | Menjelajahi katalog hierarkis, memesan tanpa akun (hanya nama pemesan), menerima tiket harian (#042), melacak status pesanan, dan menandai pesanan selesai jika membawa token perangkat yang cocok. |
+| **Member** | Customer Web (`/`) | Hak akses Guest ditambah pendaftaran via nomor WhatsApp (`08...`) & email, login akun, histori pesanan terpusat, dan akumulasi saldo poin loyalitas. |
+| **Kasir (`cashier`)** | Cashier Web (`/kasir`) | Melihat antrean pesanan aktif, memfilter status, mencari nomor tiket harian/nama, memvalidasi uang tunai, memperbarui kesiapan grup Food/Drink, toggle stok produk habis, dan mengakses arsip pesanan selesai. |
+| **Admin (`admin`)** | Admin Web (`/admin`) + Cashier Web | Seluruh hak akses Kasir ditambah CRUD kategori hierarkis, CRUD produk & bundle, manajemen voucher promo & banner, manajemen staf kasir/admin, dan akses penuh ke audit log sistem. |
+| **Sistem Backend** | Background & API | Validasi kalkulasi harga sisi server, penegakan rate limiting, pembersihan pesanan kedaluwarsa 10 menit, proteksi SSRF, pencatatan transaksi atomik, dan logging audit. |
 
-### 4.2 Katalog dan ketersediaan
-- **FR-CAT-01** Pelanggan dapat melihat kategori, menu, harga, deskripsi/gambar, dan status tersedia.
-- **FR-CAT-02** Sistem HARUS menolak item tidak tersedia saat validasi server-side.
-- **FR-CAT-03** Perubahan ketersediaan oleh peran berwenang harus tercermin pada katalog.
-- **FR-CAT-04** Katalog dan checkout HARUS bekerja pada viewport ponsel tanpa scroll horizontal.
+---
 
-### 4.3 Keranjang, checkout, dan pesanan
-- **FR-ORD-01** Pelanggan dapat memilih item/jumlah dan catatan jika item mendukung catatan.
-- **FR-ORD-02** Checkout HARUS memvalidasi ulang harga, ketersediaan, voucher/promo, dan poin di server.
-- **FR-ORD-03** Setiap pesanan HARUS memiliki nomor unik, nama pelanggan, snapshot item/harga, subtotal, diskon, total, dan metode pembayaran.
-- **FR-ORD-04** Data order HARUS menyimpan status pembayaran terpisah dari status pesanan.
-- **FR-ORD-05** Sistem tidak menggunakan nomor atau lokasi meja.
-- **FR-ORD-06** Sistem HARUS melindungi pembuatan pesanan dari pengiriman ulang yang menggandakan transaksi (idempotency atau kontrol setara).
-- **FR-ORD-07** Pelanggan dapat membuka pelacakan tanpa sesi Guest dengan kode antrean dan nama yang cocok; data pesanan hanya dikembalikan jika kedua nilai cocok. Jika kode antrean hilang, pemulihan produksi harus membuktikan kepemilikan melalui mekanisme seperti OTP ke nomor HP.
+## 4. Kebutuhan Fungsional (Functional Requirements)
 
-### 4.4 Pembayaran
-- **FR-PAY-01** Metode yang didukung kebutuhan produk adalah VA, QRIS, dan Cash.
-- **FR-PAY-02** VA/QRIS tidak boleh dianggap berhasil berdasarkan bukti unggahan saja; harus ada konfirmasi provider yang tervalidasi.
-- **FR-PAY-03** Kasir dapat mengonfirmasi Cash setelah pembayaran diterima.
-- **FR-PAY-04** Pesanan berbayar yang ditolak/dibatalkan harus mengikuti proses refund; sistem harus menyimpan status dan referensinya.
-- **FR-PAY-05** Integrasi gateway dianggap belum operasional sampai diuji dengan provider aktual.
+### 4.1 Autentikasi, Otorisasi, dan Manajemen Sesi
+* **FR-AUTH-01 (Landing Page & Pemilihan Identitas):** Customer Web HARUS menyediakan halaman awal informasional dengan navigasi cepat yang memberikan pilihan fleksibel antara memesan langsung sebagai Guest atau masuk/daftar sebagai Member.
+* **FR-AUTH-02 (Registrasi & Login Member):** Sistem HARUS mendukung registrasi Member menggunakan Nama, Email unik, Nomor WhatsApp format Indonesia (`regex:/^08[0-9]{8,12}$/`), dan Kata Sandi minimal 8 karakter. Login mendukung pengenal berupa Email atau Nomor HP dengan kata sandi ter-enkripsi Bcrypt.
+* **FR-AUTH-03 (Token Perangkat Guest & Kunci Anti-Spam):** Sesi pelanggan tamu HARUS diidentifikasi dengan `guest_device_token` anonim yang dikirimkan melalui header `X-Device-Token`. Sistem HARUS membatasi satu perangkat tamu hanya boleh memiliki **maksimal 1 pesanan tunai aktif** berstatus `MENUNGGU_PEMBAYARAN`.
+* **FR-AUTH-04 (Autentikasi Staf Berbasis Peran):** Endpoint staf (`/api/v1/auth/login`) HARUS memvalidasi akun staf aktif dan mengembalikan token Sanctum dengan otorisasi berbasis peran (`admin` atau `cashier`). Akun nonaktif (`is_active = false`) HARUS ditolak masuk.
+* **FR-AUTH-05 (Proteksi Akun Mandiri Admin):** Admin HARUS dicegah dari mengubah peran akunnya sendiri menjadi non-admin atau menonaktifkan status akunnya sendiri.
+* **FR-AUTH-06 (Rate Limiting Autentikasi):** Sistem HARUS membatasi percobaan login staf dan member maksimal 5 kali per menit per IP/identitas sebelum memberlakukan penundaan (*HTTP 429 Too Many Requests*). Endpoint registrasi member dibatasi maksimal 15 request per menit.
+* **FR-AUTH-07 (Penyeragaman Tampilan Login):** Antarmuka login Admin (`/admin`) HARUS memiliki tata letak, tipografi, warna, dan kontrol input yang seragam dan identik dengan antarmuka login Kasir (`/kasir`).
 
-### 4.5 Alur status pesanan dan item
-- **FR-STATUS-01** Status utama MVP: `MENUNGGU PEMBAYARAN`, `PESANAN DITERIMA`, `SEDANG DIBUAT`, `SIAP DIAMBIL`, `SELESAI`.
-- **FR-STATUS-02** Status pembayaran dikelola independen, minimal: `MENUNGGU`, `BERHASIL`, `GAGAL`, `KADALUWARSA`, `REFUND_SEBAGIAN`, `REFUND_PENUH` (pemetaan provider dapat berbeda).
-- **FR-STATUS-03** Status kesiapan diperbarui per kelompok `Makanan`, `Minuman`, atau `Lainnya`; satu perubahan berlaku ke seluruh item dengan `item_type` yang sama, sementara kelompok lain tetap independen.
-- **FR-STATUS-04** Status utama `SIAP DIAMBIL` hanya boleh dicapai ketika seluruh item dapat diserahkan/siap.
-- **FR-STATUS-05** Perubahan status harus divalidasi terhadap transisi yang diizinkan dan dicatat dalam riwayat.
-- **FR-STATUS-06** Kasir dapat melihat dan memfilter semua pesanan aktif, mencari berdasarkan nomor/nama, dan memperbarui status yang diizinkan.
-- **FR-STATUS-07** Pesanan `SELESAI` harus dikecualikan dari antrean aktif dan tersedia dalam halaman riwayat yang dapat dicari.
+### 4.2 Katalog Menu dan Hierarki Kategori
+* **FR-CAT-01 (Kategori Berjenjang 2-Tingkat):** Sistem HARUS mendukung struktur kategori 2-tingkat yang terdiri dari Kategori Induk (*Parent Category*, level 1) dan Subkategori (*Child Category*, level 2) melalui kolom `parent_id` dan tipe item (`drink` atau `food`).
+* **FR-CAT-02 (Pencegahan Siklus Kategori):** Sistem HARUS mencegah kategori yang memiliki subkategori untuk diubah menjadi subkategori dari kategori lain, serta membatasi kedalaman hierarki maksimal 2 tingkat.
+* **FR-CAT-03 (Integritas Penghapusan Kategori):** Sistem HARUS menolak penghapusan kategori jika kategori tersebut masih memiliki subkategori atau masih terhubung dengan produk aktif.
+* **FR-CAT-04 (Navigasi Katalog Pelanggan):** Antarmuka Customer Web HARUS menampilkan navigasi bertingkat: tab kategori induk utama (Minuman, Makanan, Bundle, Promo) dan baris tombol pil subkategori dinamis di bawahnya.
+* **FR-CAT-05 (Pengelompokan Form Produk):** Dropdown pilihan kategori pada formulir modal produk Admin HARUS mengelompokkan subkategori di bawah label kategori induknya menggunakan elemen `<optgroup>`.
+* **FR-CAT-06 (Ketersediaan Menu Real-Time):** Perubahan status ketersediaan produk (`is_available`) atau bundle (`is_active`) oleh kasir/admin HARUS segera tercermin pada katalog menu publik. Item yang tidak tersedia HARUS ditolak saat checkout di backend.
 
-### 4.6 Cetak invoice dan KOT
-- **FR-PRINT-01** Setelah pesanan dibayar valid dan dikonfirmasi, sistem membuat pekerjaan invoice kasir dan KOT dapur/bar.
-- **FR-PRINT-02** Invoice dan KOT memiliki konten/tujuan berbeda.
-- **FR-PRINT-03** Status pekerjaan cetak dan kegagalan harus dicatat; cetak ulang tidak boleh membuat pesanan/pembayaran baru.
-- **FR-PRINT-04** Integrasi printer dianggap belum operasional sampai diuji dengan perangkat target.
+### 4.3 Keranjang, Checkout, dan Pesanan
+* **FR-ORD-01 (Pemesanan Mandiri Tanpa Hambatan):** Pelanggan Guest HARUS dapat membuat pesanan cukup dengan mengisi Nama Pemesan / Panggilan, tanpa dipaksa mengisi nomor telepon atau nomor meja.
+* **FR-ORD-02 (Nomor Tiket Antrean Harian):** Setiap pesanan yang dibuat HARUS menerima dua nomor identitas:
+  1. `order_number`: Kode alfanumerik unik sistem (contoh: `ST-261030-AB12CD`).
+  2. `daily_ticket_number`: Nomor tiket panggil harian singkat 3-digit (contoh: `#001`, `#042`) yang dihitung berdasarkan jumlah pesanan pada tanggal hari tersebut untuk kemudahan pemanggilan di bar.
+* **FR-ORD-03 (Kalkulasi Server-Side & Diskon Snapshot):** Server backend HARUS menghitung ulang subtotal, verifikasi catatan khusus produk (`allow_notes`), potongan promo, dan nilai akhir secara mandiri dari database. Klien dilarang mengirimkan nominal total belanja langsung.
+* **FR-ORD-04 (Batas Waktu Pembayaran Cash / 10-Minute Expiry):** Setiap pesanan tunai baru HARUS memiliki batas waktu kedaluwarsa 10 menit sejak dibuat (`expires_at = now() + 10 menit`). Pesanan yang belum dibayar dalam 10 menit otomatis dibatalkan (`DIBATALKAN`) dan kasir dilarang mengonfirmasi pesanan yang telah kedaluwarsa.
+* **FR-ORD-05 (Idempotensi Pesanan):** Endpoint pembuatan pesanan HARUS mendukung header `Idempotency-Key` untuk mencegah duplikasi pesanan jika terjadi gangguan jaringan atau klik ganda oleh pelanggan.
+* **FR-ORD-06 (Pelacakan Pesanan Anti-IDOR):** Endpoint pelacakan status pesanan publik (`/api/v1/orders/{orderNumber}/status`) HARUS memverifikasi kesesuaian Nomor Pesanan dan Nama Pelanggan secara *case-insensitive* dengan prepared statement SQL sebelum menyajikan data.
+* **FR-ORD-07 (Otorisasi Penyelesaian Mandiri Pelanggan):** Endpoint penyelesaian pesanan oleh pelanggan (`/api/v1/orders/{orderNumber}/complete`) HARUS mensyaratkan status pesanan sudah `SIAP_DIAMBIL`, serta memvalidasi kepemilikan sesi Member atau kecocokan `guest_device_token`. Pelanggan asing dilarang menyelesaikan pesanan orang lain hanya dengan menebak nama.
 
-### 4.7 Paket, promo, dan voucher
-- **FR-PROMO-01** Paket/bundle MVP terdiri dari komponen menu dan jumlah yang ditentukan, dengan harga paket.
-- **FR-PROMO-02** KOT/order detail tetap menampilkan komponen paket agar persiapan dan stok dapat diproses.
-- **FR-PROMO-03** Paket tidak tersedia bila komponen wajib tidak tersedia, sesuai aturan stok yang ditetapkan.
-- **FR-PROMO-04** Promo/voucher MVP mendukung aturan sederhana yang eksplisit (jenis potongan, periode, syarat minimum dan cakupan).
-- **FR-PROMO-05** Sistem harus menghitung diskon di server dan menyimpan snapshot aturan/perhitungan pada transaksi.
-- **FR-PROMO-06** Batas kombinasi promo, voucher, dan poin harus dapat dikonfigurasi/ditetapkan secara eksplisit; aturan final merupakan keputusan bisnis terbuka.
+### 4.4 Pembayaran dan Kasir
+* **FR-PAY-01 (Metode Pembayaran MVP):** Sistem HARUS mendukung metode pembayaran `cash` di kasir (tunai atau QRIS statis counter). Metode `va` atau `qris` otomatis ditolak dengan pesan validasi aman hingga gateway eksternal dikonfigurasi.
+* **FR-PAY-02 (Konfirmasi Pembayaran Kasir):** Kasir HARUS mengonfirmasi penerimaan pembayaran tunai melalui endpoint khusus yang terkunci transaksional (`lockForUpdate`). Konfirmasi yang sukses mengubah `payment_status` menjadi `BERHASIL`, `order_status` menjadi `PESANAN_DITERIMA`, mengosongkan timer `expires_at`, dan mencatat riwayat audit.
+* **FR-PAY-03 (Pemberian Poin Loyalitas Member):** Konfirmasi pembayaran atas pesanan milik akun Member HARUS secara otomatis menambahkan poin loyalitas ke saldo akun Member terkait (proporsional 1 poin per Rp 10.000 belanja).
 
-### 4.8 Poin loyalitas
-- **FR-LOY-01** Admin berwenang mengelola konfigurasi terpisah untuk Aturan Perolehan Poin dan Aturan Penukaran Poin.
-- **FR-LOY-02** MVP memperoleh poin berdasarkan nominal belanja dan menukar poin menjadi potongan nominal.
-- **FR-LOY-03** Poin hanya diberikan setelah pesanan Member berstatus `SELESAI` dan memenuhi syarat aturan.
-- **FR-LOY-04** Setiap transaksi poin (perolehan, penukaran, pengembalian, kedaluwarsa, koreksi) harus dicatat sebagai ledger append-only; saldo dihitung dari ledger atau dijaga dengan mekanisme konsisten yang dapat direkonsiliasi.
-- **FR-LOY-05** Riwayat transaksi menyimpan aturan/snapshot yang digunakan sehingga perubahan aturan tidak mengubah transaksi lama.
-- **FR-LOY-06** Pembatalan/refund pesanan yang memakai poin mengembalikan poin sesuai kebijakan refund dan menghasilkan entri ledger, bukan menghapus transaksi.
-- **FR-LOY-07** Koreksi saldo memerlukan alasan, aktor admin, waktu, dan entri koreksi baru.
-- **FR-LOY-08** Hak mengubah aturan dan melakukan koreksi harus terpisah/terbatas dan diaudit.
-- **FR-LOY-09** Persentase dan reward produk bukan kebutuhan MVP.
+### 4.5 Alur Kesiapan Pesanan (Preparation Groups)
+* **FR-STAT-01 (Pemisahan Status Pembayaran dan Status Pesanan):** Status pesanan dan status pembayaran HARUS dikelola secara terpisah.
+  * *Status Pesanan:* `MENUNGGU_PEMBAYARAN`, `PESANAN_DITERIMA`, `SEDANG_DIBUAT`, `SIAP_DIAMBIL`, `SELESAI`, `DIBATALKAN`.
+  * *Status Pembayaran:* `MENUNGGU`, `BERHASIL`, `DIBATALKAN`.
+* **FR-STAT-02 (Grup Kesiapan Kategori):** Item dalam pesanan HARUS diklasifikasikan ke dalam kelompok persiapan berdasarkan `item_type` (`food` atau `drink`/`bundle`). Kasir dapat memperbarui status kesiapan per kelompok menjadi `DIPROSES` atau `SIAP`.
+* **FR-STAT-03 (Auto-Advance Kesiapan Pesanan):** Ketika seluruh kelompok item dalam satu pesanan telah ditandai `SIAP`, sistem backend HARUS secara otomatis menaikkan status pesanan menjadi `SIAP_DIAMBIL` tanpa memerlukan pembaruan manual kedua.
+* **FR-STAT-04 (Pemisahan Antrean Aktif dan Pesanan Selesai):** Antrean kasir aktif HARUS mengecualikan pesanan yang berstatus `SELESAI` atau `DIBATALKAN`. Pesanan selesai dapat diakses dan dicari melalui tab/endpoint riwayat terpisah (`/api/v1/cashier/orders/completed`).
 
-### 4.9 Admin dan audit
-- **FR-ADM-01** Admin berwenang dapat mengelola kategori/menu, paket, promo/voucher, banner, informasi toko, dan akun staf sesuai permission.
-- **FR-ADM-02** Data transaksi/riwayat pembayaran/poin tidak boleh dihapus melalui operasi bisnis normal.
-- **FR-ADM-03** Aksi administratif sensitif harus mencatat pelaku, waktu, objek, dan perubahan yang relevan.
-- **FR-ADM-04** Panel Admin pada `/admin` hanya dapat memakai API oleh staf aktif dengan role `admin`; dashboard menampilkan jumlah kategori/produk aktif, menu aktif yang tidak tersedia, pesanan berjalan, dan pesanan terbaru.
-- **FR-ADM-05** Admin dapat membuat, membaca, mengubah, dan menghapus kategori; urutan, status aktif, dan deskripsi dapat dikelola. Kategori yang masih digunakan produk tidak boleh dihapus.
-- **FR-ADM-06** Admin dapat membuat, membaca, mengubah, dan mengarsipkan produk, termasuk kategori, tipe, harga, deskripsi, gambar, catatan khusus, ketersediaan, dan status tampil.
-- **FR-ADM-07** Pengarsipan produk tidak menghapus rekam historis pesanan; setiap mutasi kategori/produk harus membuat entri audit dengan identitas aktor dan snapshot perubahan.
+### 4.6 Cetak Dokumen Operasional (Print Jobs)
+* **FR-PRN-01 (Pembuatan Antrean Cetak Otomatis):** Konfirmasi pembayaran yang sah HARUS secara otomatis menghasilkan dua entri pekerjaan cetak di database:
+  1. `invoice`: Struk pembayaran untuk kasir / pelanggan.
+  2. `kot`: *Kitchen Order Ticket* untuk meja barista / dapur.
+* **FR-PRN-02 (Dukungan Cetak Browser):** Web Kasir HARUS mendukung pencetakan nota langsung melalui dialog cetak browser yang diformat presisi untuk printer thermal standar (lebar 72mm - 80mm).
 
-## 5. Kebutuhan Nonfungsional
+### 4.7 Paket Menu (Bundles) dan Promosi
+* **FR-BND-01 (Manajemen Paket Menu):** Admin HARUS dapat membuat paket menu bundle dengan harga khusus dan menghubungkan satu atau lebih produk komponen beserta kuantitasnya.
+* **FR-BND-02 (Validasi Ketersediaan Komponen):** Jika salah satu produk penyusun bundle ditandai tidak tersedia atau dihapus, paket bundle tersebut HARUS secara otomatis ditolak saat pelanggan mencoba checkout.
+* **FR-PRM-01 (Manajemen Kode Promo/Voucher):** Admin HARUS dapat mengelola kode voucher dengan tipe diskon persentase (maksimal 100%) atau potongan nominal tetap, disertai syarat minimal belanja dan batas maksimal diskon rupiah.
+* **FR-PRM-02 (Validasi Masa Berlaku Promo):** Sistem HARUS memvalidasi tanggal mulai (`starts_at`) dan tanggal selesai (`ends_at`) promo saat validasi voucher dan saat checkout.
 
-- **NFR-01 Responsif:** Customer dan kasir mobile-first; admin desktop-first namun responsif. Tidak ada konten/aksi inti yang memerlukan lebar desktop saja.
-- **NFR-02 Usability:** Target sentuh minimum 44×44 CSS px, label jelas, status tidak dibedakan hanya melalui warna, validasi dekat dengan input.
-- **NFR-03 Keamanan:** TLS di deployment, validasi server-side, hashing kata sandi via framework, perlindungan CSRF/session sesuai arsitektur, least privilege, secret melalui environment/secret manager dan tidak masuk repo.
-- **NFR-04 Integritas:** Perhitungan total, penggunaan poin, konfirmasi pembayaran, dan perubahan stok kritis harus atomik/transaksional serta tahan terhadap request bersamaan.
-- **NFR-05 Auditabilitas:** Perubahan status, pembayaran, aturan poin, ledger, refund, dan cetak dapat dilacak.
-- **NFR-06 Ketersediaan/status:** UI menampilkan waktu/status terbaru; mekanisme polling atau WebSocket dipilih sesuai kebutuhan deployment.
-- **NFR-07 Kompatibilitas:** Mendukung browser modern pada ponsel, tablet, dan desktop.
-- **NFR-08 Pemeliharaan:** Logika pembayaran, order/status, stok, poin, dan printing dipisahkan dan dapat diuji.
-- **NFR-09 Backup:** Database harus memiliki prosedur backup dan pemulihan yang terdokumentasi sebelum produksi.
-- **NFR-10 Privasi:** Akses status order Guest harus membatasi paparan data pribadi dan tidak membocorkan rincian pesanan hanya dari nomor berurutan.
+### 4.8 Upload Media dan Audit Trail
+* **FR-MED-01 (Upload File Gambar Aman):** Upload foto produk/banner melalui `/api/v1/admin/upload` HARUS memvalidasi tipe MIME gambar yang sah (`jpeg, png, jpg, webp, gif, bmp, avif`), ukuran maksimal 10MB, dan menyimpan file dengan nama acak serta ekstensi yang ditentukan dari hasil deteksi MIME sistem (`$file->extension()`).
+* **FR-MED-02 (Proteksi Anti-SSRF pada Import Gambar URL):** Fitur import gambar dari URL eksternal (`/api/v1/admin/import-url`) HARUS memblokir skema non-HTTP/HTTPS, memblokir host loopback (`localhost`, `127.0.0.1`, `::1`), private network (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), domain lokal (`.local`, `.internal`), serta alamat metadata cloud (`169.254.169.254`).
+* **FR-AUD-01 (Pencatatan Audit Trail Mutasi):** Setiap operasi penambahan, perubahan, atau penghapusan pada kategori, produk, bundle, promo, banner, dan staf oleh Admin HARUS mencatat identitas aktor (`actor_id`), aksi (`action`), `before_snapshot`, `after_snapshot`, alamat IP, dan waktu kejadian pada tabel `audit_logs`.
 
-## 6. Model Data Konseptual Awal
+---
 
-Entitas kandidat: users, roles/permissions, customer_profiles, categories, products, product_availability/inventory, bundles, bundle_components, promotions, vouchers/redemptions, orders, order_items, payments/payment_events, order_status_history, item_status, print_jobs, loyalty_earning_rules, loyalty_redemption_rules, loyalty_ledger, refunds, audit_logs, store_settings/banners.
+## 5. Kebutuhan Nonfungsional (Non-Functional Requirements)
 
-Kunci rancangan:
-- Harga/nama item dan parameter diskon/poin yang relevan disimpan sebagai snapshot transaksi.
-- Nomor order unik dan bukan ID internal berurutan yang terekspos.
-- Pembayaran dan status order berbeda domain.
-- Poin memakai ledger append-only dan referensi order/rule/aktor.
-- Status per jenis item harus dapat merepresentasikan makanan dan minuman yang berbeda.
-- Gunakan constraint, foreign key, indeks, dan transaksi PostgreSQL untuk menjaga integritas.
+### 5.1 Keamanan (Security)
+* **NFR-SEC-01 (Pencegahan SQL Injection):** Seluruh query database HARUS menggunakan Eloquent ORM atau Query Builder dengan parameter binding (*prepared statements*). Dilarang keras menggunakan string concatenation pada raw query.
+* **NFR-SEC-02 (Pencegahan Cross-Site Scripting / XSS):** Frontend React HARUS merender seluruh data dinamis melalui escaping bawaan JSX dan dilarang menggunakan `dangerouslySetInnerHTML` tanpa sanitasi HTML ketat.
+* **NFR-SEC-03 (Penerapan Rate Limiting API):** Seluruh endpoint API publik HARUS dilindungi middleware `throttle`:
+  * `POST /api/v1/orders`: `throttle:30,1` (maksimal 30 request/menit).
+  * `POST /api/v1/promotions/validate`: `throttle:30,1`.
+  * `GET /api/v1/orders/{orderNumber}/status`: `throttle:60,1`.
+  * `POST /api/v1/members/register`: `throttle:15,1`.
+  * `POST /api/v1/members/login` & `/auth/login`: `throttle:20,1` + kunci akun dinamis 5 percobaan gagal.
+* **NFR-SEC-04 (Penyimpanan Kredensial & Secrets):** Seluruh kata sandi user staf dan customer HARUS di-hash menggunakan algoritma Bcrypt dengan cost factor memadai. Kredensial database dan API keys dilarang masuk ke version control (Git) dan wajib disimpan di file `.env`.
+* **NFR-SEC-05 (Kebijakan CORS):** Konfigurasi CORS pada backend HARUS membatasi `allowed_origins` ke domain resmi aplikasi dan melarang wildcard `*` pada lingkungan produksi.
 
-## 7. Kebutuhan Antarmuka Utama
+### 5.2 Integritas Data dan Konkurensi
+* **NFR-CON-01 (Penguncian Tingkat Baris / Pessimistic Locking):** Seluruh transaksi kritis yang memodifikasi stok produk, ketersediaan bundle, konfirmasi pembayaran pesanan tunai, dan transisi status kesiapan HARUS dibungkus dalam `DB::transaction(..., 3)` dan menggunakan penguncian baris `lockForUpdate()`.
+* **NFR-CON-02 (Presisi Moneter):** Seluruh kolom nilai uang (harga, subtotal, diskon, total) HARUS disimpan menggunakan tipe data desimal/numerik tetap (`decimal:2` / `numeric(12,2)`), bukan floating-point IEEE-754.
 
-- Customer: katalog, detail, keranjang, checkout, instruksi pembayaran, pelacakan, akun/riwayat/poin.
-- Kasir: antrean aktif, filter/pencarian, detail pesanan, pembaruan status, ketersediaan, pembayaran, cetak, pesanan selesai.
-- Admin: dashboard ringkas, CRUD master data, pengaturan promo/poin, staf/permission, dan audit.
-- Kasir pada ponsel/tablet harus bisa melihat antrean multi-pesanan dan memindahkan pesanan selesai keluar dari daftar aktif.
+### 5.3 Kinerja dan Pengalaman Pengguna (Usability & Responsiveness)
+* **NFR-UX-01 (Mobile-First Touch Ergonomics):** Seluruh elemen interaktif pada Customer Web dan Cashier Web HARUS memiliki target sentuh minimal 44 × 44 CSS pixels dan dilarang menghasilkan scroll horizontal (*no horizontal overflow*) pada resolusi layar ponsel (320px ke atas).
+* **NFR-UX-02 (Kecepatan Muat Frontend):** Bundel JavaScript frontend yang dikompresi gzip HARUS berukuran di bawah 150 KB untuk menjamin waktu muat awal di bawah 1.5 detik pada jaringan seluler 4G.
+* **NFR-UX-03 (Desain Bebas Ketergantungan Eksternal):** Seluruh ikon visual antarmuka HARUS menggunakan format SVG lokal mandiri tanpa memuat font icon eksternal pihak ketiga yang lambat.
 
-## 8. Kebutuhan Operasional dan Deployment
+---
 
-- PostgreSQL versi target: 17.
-- Nama database target: `satuang_db`; username koneksi lokal diminta `postgres`.
-- Kredensial tidak boleh ditulis dalam dokumentasi, source control, atau contoh yang dapat dipublikasikan; gunakan `.env` lokal yang dikecualikan dari Git atau mekanisme secret yang sesuai.
-- Provider pembayaran, perangkat printer, topologi jaringan, domain/hosting, dan strategi backup belum diputuskan.
-- Migrasi harus menjadi sumber perubahan schema setelah implementasi dimulai; jangan mengandalkan perubahan manual tanpa migrasi.
+## 6. Model Data Relasional Inti
 
-## 9. Kriteria Penerimaan MVP
+```
+┌──────────────┐       ┌──────────────┐       ┌──────────────────────┐
+│  categories  │1     *│   products   │1     *│   bundle_components  │
+│--------------│───────│--------------│───────│----------------------│
+│ id (PK)      │       │ id (PK)      │       │ id (PK)              │
+│ parent_id(FK)│       │ category_id  │       │ bundle_id (FK)       │
+│ name         │       │ name, price  │       │ product_id (FK)      │
+│ item_type    │       │ item_type    │       │ quantity             │
+│ is_active    │       │ is_available │       └──────────┬───────────┘
+└──────────────┘       │ allow_notes  │                  │*
+                       └──────┬───────┘                  │1
+                              │1                  ┌──────┴───────┐
+                              │*                  │   bundles    │
+                       ┌──────┴───────┐           │--------------│
+                       │ order_items  │           │ id (PK)      │
+                       │--------------│           │ name, price  │
+                       │ id (PK)      │           │ is_active    │
+                       │ order_id(FK) │           └──────────────┘
+                       │ product_id   │
+                       │ quantity     │
+                       │ line_total   │
+                       │ prep_status  │
+                       └──────┬───────┘
+                              │*
+                              │1
+┌──────────────┐       ┌──────┴───────────────┐       ┌──────────────┐
+│  customers   │1     *│        orders        │1     *│   payments   │
+│--------------│───────│----------------------│───────│--------------│
+│ id (PK)      │       │ id (PK)              │       │ id (PK)      │
+│ name, email  │       │ order_number (UK)    │       │ order_id(FK) │
+│ phone (UK)   │       │ daily_ticket_number  │       │ method (cash)│
+│ points_bal   │       │ customer_id (FK)     │       │ status       │
+└──────────────┘       │ guest_device_token   │       │ amount       │
+                       │ order_status         │       └──────────────┘
+                       │ payment_status       │
+                       │ total, subtotal      │
+                       │ expires_at           │
+                       └──────────────────────┘
+```
 
-- Guest/Member dapat membuat pesanan unik dengan snapshot harga dan metode pembayaran.
-- Pembayaran online tidak dianggap berhasil tanpa verifikasi yang sah.
-- Kasir dapat melihat semua order aktif, mengubah status, dan menemukan order selesai terpisah.
-- Status makanan/minuman dapat berbeda dan status utama siap hanya bila semua item siap.
-- Ketersediaan divalidasi ulang dan sinkron dengan katalog.
-- Invoice/KOT dapat dicoba ulang tanpa transaksi ganda; uji perangkat aktual menjadi acceptance integrasi.
-- Admin dapat mengelola master data dan aturan poin dengan permission.
-- Poin diberikan saat order selesai, dapat ditukar sebagai potongan nominal, dan seluruh event tercatat tanpa mengubah histori lama.
-- Antarmuka inti dapat digunakan di ponsel/tablet tanpa scroll horizontal.
-- Functional tests untuk alur inti lulus sebelum UAT.
+---
 
-## 10. Pertanyaan Terbuka yang Memblokir Keputusan Final
+## 7. Kriteria Verifikasi dan Kesiapan Produksi
 
-1. Provider VA/QRIS dan aturan webhook/rekonsiliasi.
-2. Refund/pembatalan, termasuk refund parsial dan pengembalian poin.
-3. Rasio perolehan, konversi poin ke rupiah, minimum/maksimum penukaran, masa berlaku, dan pembulatan.
-4. Urutan/kombinasi diskon paket, promo, voucher, dan poin.
-5. Aturan stok/overselling dan tindakan ketika item habis setelah pembayaran.
-6. Model printer, koneksi, lokasi jaringan, dan cara cetak dari browser.
-7. Outlet MVP ditetapkan satu lokasi: Banjar Wijaya; pemilik perlu mengonfirmasi alamat publik, jam operasional, dan kanal resmi.
-8. Retensi data pribadi/transaksi dan mekanisme akses pelacakan Guest.
-9. Detail akses kasir: apakah boleh menyesuaikan harga, membatalkan order, atau hanya mengubah ketersediaan/status.
-10. Target deployment, domain, backup, monitoring, dan batas performa.
+1. **Pengujian Unit & Fitur Otomatis:**
+   Seluruh 48 automated test suites pada direktori `backend/tests/` HARUS berstatus **PASS** saat dieksekusi dengan perintah `php artisan test`.
+2. **Kompilasi Frontend Bebas Error:**
+   Perintah `npm run build` di direktori `frontend/` HARUS menghasilkan kompilasi bersih tanpa *warning* atau *type-error* TypeScript (`tsc -b`).
+3. **Audit Keamanan Terverifikasi:**
+   Endpoint telah melewati audit independen untuk verifikasi proteksi XSS, SQLi, SSRF, IDOR, dan Brute-force rate limiting.
