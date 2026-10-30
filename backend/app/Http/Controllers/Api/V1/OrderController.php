@@ -168,7 +168,12 @@ class OrderController extends Controller
                 $isOwner = true;
             } elseif ($deviceToken && $order->guest_device_token === $deviceToken) {
                 $isOwner = true;
-            } elseif ($request->filled('customer_name') && strcasecmp(trim((string) $order->customer_name), trim((string) $request->input('customer_name'))) === 0) {
+            } elseif (
+                !$order->customer_id
+                && !$order->guest_device_token
+                && $request->filled('customer_name')
+                && strcasecmp(trim((string) $order->customer_name), trim((string) $request->input('customer_name'))) === 0
+            ) {
                 $isOwner = true;
             }
 

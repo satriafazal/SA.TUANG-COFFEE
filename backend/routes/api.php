@@ -11,20 +11,20 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function (): void {
     Route::get('/menu', [MenuController::class, 'index'])->name('api.v1.menu.index');
-    Route::post('/orders', [OrderController::class, 'store'])->name('api.v1.orders.store');
+    Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('api.v1.orders.store');
     Route::get('/orders/my-orders', [OrderController::class, 'myOrders'])->name('api.v1.orders.my-orders');
-    Route::post('/promotions/validate', [OrderController::class, 'validatePromo'])->name('api.v1.promotions.validate');
-    Route::get('/orders/{orderNumber}/status', [TrackOrderController::class, 'show'])->name('api.v1.orders.status');
-    Route::post('/orders/{orderNumber}/complete', [OrderController::class, 'complete'])->name('api.v1.orders.complete');
+    Route::post('/promotions/validate', [OrderController::class, 'validatePromo'])->middleware('throttle:30,1')->name('api.v1.promotions.validate');
+    Route::get('/orders/{orderNumber}/status', [TrackOrderController::class, 'show'])->middleware('throttle:60,1')->name('api.v1.orders.status');
+    Route::post('/orders/{orderNumber}/complete', [OrderController::class, 'complete'])->middleware('throttle:30,1')->name('api.v1.orders.complete');
 
-    Route::post('/members/register', [MemberAuthController::class, 'register'])->name('api.v1.members.register');
-    Route::post('/members/login', [MemberAuthController::class, 'login'])->name('api.v1.members.login');
+    Route::post('/members/register', [MemberAuthController::class, 'register'])->middleware('throttle:15,1')->name('api.v1.members.register');
+    Route::post('/members/login', [MemberAuthController::class, 'login'])->middleware('throttle:20,1')->name('api.v1.members.login');
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/members/me', [MemberAuthController::class, 'me'])->name('api.v1.members.me');
         Route::post('/members/logout', [MemberAuthController::class, 'logout'])->name('api.v1.members.logout');
     });
 
-    Route::post('/auth/login', [AuthController::class, 'login'])->name('api.v1.auth.login');
+    Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:20,1')->name('api.v1.auth.login');
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/auth/me', [AuthController::class, 'me'])->name('api.v1.auth.me');
         Route::post('/auth/logout', [AuthController::class, 'logout'])->name('api.v1.auth.logout');
