@@ -626,42 +626,143 @@
 }
 .admin-login-page {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   place-items: center;
   padding: 24px;
   background: var(--admin-bg);
+  min-height: 100svh;
 }
-.admin-login-card {
-  width: min(100%, 430px);
-  padding: 32px;
-  background: #fff;
-  border: 1px solid var(--admin-line);
-  box-shadow: 0 15px 44px #252a2010;
+.admin-login {
+  width: min(100%, 460px);
+  padding: 46px 38px;
+  margin: 0;
+}
+.admin-login .admin-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  color: #20251f;
+  text-decoration: none;
+  min-width: max-content;
+  margin-bottom: 52px;
+}
+.admin-login .admin-brand .admin-brand-mark {
+  width: 38px;
+  height: 38px;
   display: grid;
-  gap: 16px;
+  place-items: center;
+  background: #d76d3d;
+  color: #fff;
+  font: 700 21px/1 Georgia, serif;
 }
-.admin-login-card .admin-brand {
-  color: #262a26;
+.admin-login .admin-brand > span:last-child {
+  display: grid;
+  gap: 1px;
 }
-.admin-login-card .admin-brand small {
-  color: #858981;
+.admin-login .admin-brand strong {
+  font: 700 15px/1.1 "Space Grotesk", system-ui, sans-serif;
+  letter-spacing: 0.07em;
+  color: #20251f;
 }
-.admin-login-heading {
-  margin-top: 17px;
+.admin-login .admin-brand small {
+  font-size: 8px;
+  letter-spacing: 0.13em;
+  color: #8c9187;
 }
-.admin-login-heading h1 {
-  margin: 9px 0 6px;
+.admin-login .admin-eyebrow {
+  display: block;
+  margin-bottom: 8px;
+  color: #a45b39;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+.admin-login h1 {
+  margin: 0 0 9px;
+  color: #242822;
   font:
-    700 29px/1.1 "Space Grotesk",
+    700 35px/1.1 "Space Grotesk",
     system-ui,
     sans-serif;
   letter-spacing: -0.05em;
 }
-.admin-login-heading p {
-  margin: 0;
-  color: #777b73;
-  font-size: 11px;
+.admin-login-intro {
+  margin: 0 0 25px;
+  color: #777c73;
+  font-size: 12px;
+  line-height: 1.7;
 }
-.admin-login-card > label,
+.admin-login-form {
+  display: grid;
+  gap: 14px;
+}
+.admin-login-form label {
+  display: grid;
+  gap: 6px;
+  color: #51574e;
+  font-size: 10px;
+  font-weight: 700;
+}
+.admin-login-form input {
+  height: 44px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid #dfe1d8;
+  background: #fff;
+  color: #222820;
+  font-size: 12px;
+  outline: none;
+}
+.admin-login-form input:focus {
+  border-color: #64836b;
+  box-shadow: 0 0 0 3px #64836b1c;
+}
+.admin-login-form input::placeholder {
+  color: #a4a79f;
+}
+.admin-login-form .wide {
+  margin-top: 4px;
+  min-height: 45px;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  background: #28332b;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+.admin-login-form .wide:hover:not(:disabled) {
+  background: #3b4d40;
+}
+.admin-login-form .wide:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.admin-error {
+  padding: 10px 11px;
+  background: #fff0ee;
+  border: 1px solid #f0d0cb;
+  color: #a3453d;
+  font-size: 10px;
+  margin: 0;
+}
+.admin-back-home {
+  display: inline-block;
+  margin-top: 20px;
+  color: #747a70;
+  text-decoration: none;
+  font-size: 10px;
+}
+.admin-back-home:hover {
+  text-decoration: underline;
+}
 .admin-form > label,
 .admin-form-row > label {
   display: grid;
@@ -670,7 +771,6 @@
   font-size: 10px;
   font-weight: 700;
 }
-.admin-login-card > label input,
 .admin-form input:not([type="checkbox"]),
 .admin-form select,
 .admin-form textarea {
@@ -683,15 +783,6 @@
   color: #272c27;
   font-size: 11px;
   outline-color: #c96738;
-}
-.admin-back-link {
-  justify-self: center;
-  margin-top: 3px;
-  color: #73776f;
-  font-size: 10px;
-}
-.admin-back-link:hover {
-  color: #a75332;
 }
 .admin-loading {
   display: flex;
@@ -983,8 +1074,8 @@
     min-height: unset;
     padding: 6px 0;
   }
-  .admin-login-card {
-    padding: 25px 20px;
+  .admin-login {
+    padding: 26px 20px;
   }
   .admin-modal-actions {
     position: sticky;
