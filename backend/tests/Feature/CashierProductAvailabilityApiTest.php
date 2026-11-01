@@ -37,7 +37,8 @@ class CashierProductAvailabilityApiTest extends TestCase
         $this->getJson('/api/v1/cashier/products')
             ->assertOk()
             ->assertJsonPath('products.0.id', $productId)
-            ->assertJsonPath('products.0.is_available', true);
+            ->assertJsonPath('products.0.is_available', true)
+            ->assertJsonStructure(['products' => [['id', 'name', 'item_type', 'price', 'is_available', 'image_path']]]);
 
         $this->patchJson("/api/v1/cashier/products/{$productId}/availability", ['is_available' => false])
             ->assertOk()
@@ -48,13 +49,17 @@ class CashierProductAvailabilityApiTest extends TestCase
         $this->getJson('/api/v1/menu')->assertJsonMissing(['id' => $productId]);
     }
 
-    public function test_product_availability_endpoints_require_cashier_or_admin_role(): void
+    public function test_product_availability_endpoints_require_cashier_role_and_blocks_admin(): void
     {
         $productId = $this->product();
         $this->getJson('/api/v1/cashier/products')->assertUnauthorized();
 
         $this->actingAs(User::factory()->create(['role' => 'member']), 'sanctum')
             ->patchJson("/api/v1/cashier/products/{$productId}/availability", ['is_available' => false])
+            ->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'sanctum')
+            ->getJson('/api/v1/cashier/products')
             ->assertForbidden();
     }
 }

@@ -66,7 +66,7 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/orders', [AdminCatalogController::class, 'orders'])->name('api.v1.admin.orders.index');
         Route::get('/audit-logs', [AdminCatalogController::class, 'auditLogs'])->name('api.v1.admin.audit-logs.index');
     });
-    Route::prefix('cashier')->middleware(['auth:sanctum', 'role:cashier,admin'])->group(function (): void {
+    Route::prefix('cashier')->middleware(['auth:sanctum', 'role:cashier'])->group(function (): void {
         Route::get('/products', [CashierOrderController::class, 'products'])->name('api.v1.cashier.products.index');
         Route::patch('/products/{productId}/availability', [CashierOrderController::class, 'updateProductAvailability'])->name('api.v1.cashier.products.availability');
         Route::patch('/bundles/{bundleId}/availability', [CashierOrderController::class, 'updateBundleAvailability'])->name('api.v1.cashier.bundles.availability');

@@ -111,12 +111,16 @@ class CashierOrderApiTest extends TestCase
             ->assertJsonPath('order_status', 'SIAP_DIAMBIL');
     }
 
-    public function test_cashier_must_authenticate_and_have_cashier_or_admin_role(): void
+    public function test_cashier_endpoints_require_cashier_role_and_blocks_admin(): void
     {
         $orderNumber = $this->orderWithItems(['drink']);
         $this->getJson('/api/v1/cashier/orders')->assertUnauthorized();
 
         $this->actingAs(User::factory()->create(['role' => 'member']), 'sanctum')
+            ->getJson('/api/v1/cashier/orders')
+            ->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['role' => 'admin', 'is_active' => true]), 'sanctum')
             ->getJson('/api/v1/cashier/orders')
             ->assertForbidden();
 
