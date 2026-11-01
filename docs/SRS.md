@@ -29,7 +29,7 @@ Sistem dirancang dengan arsitektur modern terpisah (*decoupled architecture*):
 | **Guest (Tamu)** | Customer Web (`/`) | Menjelajahi katalog hierarkis, memesan tanpa akun (hanya nama pemesan), menerima tiket harian (#042), melacak status pesanan, dan menandai pesanan selesai jika membawa token perangkat yang cocok. |
 | **Member** | Customer Web (`/`) | Hak akses Guest ditambah pendaftaran via nomor WhatsApp (`08...`) & email, login akun, histori pesanan terpusat, dan akumulasi saldo poin loyalitas. |
 | **Kasir (`cashier`)** | Cashier Web (`/kasir`) | Melihat antrean pesanan aktif, memfilter status, mencari nomor tiket harian/nama, memvalidasi uang tunai, memperbarui kesiapan grup Food/Drink, toggle stok produk habis, dan mengakses arsip pesanan selesai. |
-| **Admin (`admin`)** | Admin Web (`/admin`) + Cashier Web | Seluruh hak akses Kasir ditambah CRUD kategori hierarkis, CRUD produk & bundle, manajemen voucher promo & banner, manajemen staf kasir/admin, dan akses penuh ke audit log sistem. |
+| **Admin (`admin`)** | Admin Web (`/admin`) | Dashboard analitik, CRUD kategori hierarkis, CRUD produk & bundle, manajemen voucher promo & banner, manajemen staf kasir/admin, dan akses penuh ke audit log sistem. Dibatasi dari transaksi langsung di Kasir (Segregation of Duties). |
 | **Sistem Backend** | Background & API | Validasi kalkulasi harga sisi server, penegakan rate limiting, pembersihan pesanan kedaluwarsa 10 menit, proteksi SSRF, pencatatan transaksi atomik, dan logging audit. |
 
 ---

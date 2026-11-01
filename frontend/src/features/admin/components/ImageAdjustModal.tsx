@@ -76,6 +76,59 @@ export function ImageAdjustModal({
     }
   }
 
+function computeBaseDimensions(
+  imgW: number,
+  imgH: number,
+  canvasW: number,
+  canvasH: number,
+  isRotated90: boolean
+) {
+  const targetW = isRotated90 ? canvasH : canvasW
+  const targetH = isRotated90 ? canvasW : canvasH
+  const imgRatio = imgW / imgH
+  const targetRatio = targetW / targetH
+
+  let baseW = targetW
+  let baseH = targetH
+
+  if (imgRatio > targetRatio) {
+    baseH = targetH
+    baseW = targetH * imgRatio
+  } else {
+    baseW = targetW
+    baseH = targetW / imgRatio
+  }
+
+  return { baseW, baseH }
+}
+
+  const getPanBounds = (currentZoom: number, currentRotation: number, canvasW = 400, canvasH = 300) => {
+    if (!imgRef.current) return { maxPanX: 0, maxPanY: 0 }
+    const isRotated90 = currentRotation % 180 !== 0
+    const { baseW, baseH } = computeBaseDimensions(
+      imgRef.current.naturalWidth,
+      imgRef.current.naturalHeight,
+      canvasW,
+      canvasH,
+      isRotated90
+    )
+    const extentX = (isRotated90 ? baseH : baseW) * currentZoom
+    const extentY = (isRotated90 ? baseW : baseH) * currentZoom
+    const maxPanX = Math.max(0, (extentX - canvasW) / 2)
+    const maxPanY = Math.max(0, (extentY - canvasH) / 2)
+    return { maxPanX, maxPanY }
+  }
+
+  const applyZoom = (nextZoom: number) => {
+    const clampedZoom = Math.min(3, Math.max(1.0, Number(nextZoom.toFixed(2))))
+    setZoom(clampedZoom)
+    const { maxPanX, maxPanY } = getPanBounds(clampedZoom, rotation)
+    setPan((prev) => ({
+      x: Math.max(-maxPanX, Math.min(maxPanX, prev.x)),
+      y: Math.max(-maxPanY, Math.min(maxPanY, prev.y)),
+    }))
+  }
+
   // Draw real-time preview canvas
   useEffect(() => {
     if (!isOpen || !imageLoaded || !imgRef.current || !previewCanvasRef.current) return
@@ -94,26 +147,28 @@ export function ImageAdjustModal({
     // Filters
     ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`
 
+    const isRotated90 = rotation % 180 !== 0
+    const { baseW, baseH } = computeBaseDimensions(
+      img.naturalWidth,
+      img.naturalHeight,
+      w,
+      h,
+      isRotated90
+    )
+
+    const extentX = (isRotated90 ? baseH : baseW) * zoom
+    const extentY = (isRotated90 ? baseW : baseH) * zoom
+    const maxPanX = Math.max(0, (extentX - w) / 2)
+    const maxPanY = Math.max(0, (extentY - h) / 2)
+    const clampedPanX = Math.max(-maxPanX, Math.min(maxPanX, pan.x))
+    const clampedPanY = Math.max(-maxPanY, Math.min(maxPanY, pan.y))
+
     // Center & transform
-    ctx.translate(w / 2 + pan.x, h / 2 + pan.y)
+    ctx.translate(w / 2 + clampedPanX, h / 2 + clampedPanY)
     ctx.rotate((rotation * Math.PI) / 180)
     ctx.scale(zoom, zoom)
 
-    // Calculate dimensions to cover viewport
-    const imgRatio = img.naturalWidth / img.naturalHeight
-    const canvasRatio = w / h
-    let drawW = w
-    let drawH = h
-
-    if (imgRatio > canvasRatio) {
-      drawH = h
-      drawW = h * imgRatio
-    } else {
-      drawW = w
-      drawH = w / imgRatio
-    }
-
-    ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH)
+    ctx.drawImage(img, -baseW / 2, -baseH / 2, baseW, baseH)
     ctx.restore()
   }, [isOpen, imageLoaded, zoom, rotation, brightness, contrast, pan])
 
@@ -128,9 +183,12 @@ export function ImageAdjustModal({
 
   const handlePointerMove = (e: PointerEvent<HTMLCanvasElement>) => {
     if (!isDragging) return
+    const rawX = e.clientX - dragStart.x
+    const rawY = e.clientY - dragStart.y
+    const { maxPanX, maxPanY } = getPanBounds(zoom, rotation)
     setPan({
-      x: e.clientX - dragStart.x,
-      y: e.clientY - dragStart.y,
+      x: Math.max(-maxPanX, Math.min(maxPanX, rawX)),
+      y: Math.max(-maxPanY, Math.min(maxPanY, rawY)),
     })
   }
 
@@ -146,11 +204,17 @@ export function ImageAdjustModal({
   const handleWheel = (e: WheelEvent<HTMLCanvasElement>) => {
     e.preventDefault()
     const delta = e.deltaY < 0 ? 0.1 : -0.1
-    setZoom((prev) => Math.min(3, Math.max(0.8, Number((prev + delta).toFixed(2)))))
+    applyZoom(zoom + delta)
   }
 
   const handleRotate = () => {
-    setRotation((prev) => (prev + 90) % 360)
+    const nextRot = (rotation + 90) % 360
+    setRotation(nextRot)
+    const { maxPanX, maxPanY } = getPanBounds(zoom, nextRot)
+    setPan((prev) => ({
+      x: Math.max(-maxPanX, Math.min(maxPanX, prev.x)),
+      y: Math.max(-maxPanY, Math.min(maxPanY, prev.y)),
+    }))
   }
 
   const handleReset = () => {
@@ -182,26 +246,29 @@ export function ImageAdjustModal({
       const previewW = previewCanvasRef.current?.width || 400
       const scaleMultiplier = CANVAS_WIDTH / previewW
 
+      const isRotated90 = rotation % 180 !== 0
+      const { baseW, baseH } = computeBaseDimensions(
+        img.naturalWidth,
+        img.naturalHeight,
+        w,
+        h,
+        isRotated90
+      )
+
+      const extentX = (isRotated90 ? baseH : baseW) * zoom
+      const extentY = (isRotated90 ? baseW : baseH) * zoom
+      const maxPanX = Math.max(0, (extentX - w) / 2)
+      const maxPanY = Math.max(0, (extentY - h) / 2)
+      const clampedPanX = Math.max(-maxPanX, Math.min(maxPanX, pan.x * scaleMultiplier))
+      const clampedPanY = Math.max(-maxPanY, Math.min(maxPanY, pan.y * scaleMultiplier))
+
       ctx.save()
       ctx.filter = `brightness(${brightness}%) contrast(${contrast}%)`
-      ctx.translate(w / 2 + pan.x * scaleMultiplier, h / 2 + pan.y * scaleMultiplier)
+      ctx.translate(w / 2 + clampedPanX, h / 2 + clampedPanY)
       ctx.rotate((rotation * Math.PI) / 180)
       ctx.scale(zoom, zoom)
 
-      const imgRatio = img.naturalWidth / img.naturalHeight
-      const canvasRatio = w / h
-      let drawW = w
-      let drawH = h
-
-      if (imgRatio > canvasRatio) {
-        drawH = h
-        drawW = h * imgRatio
-      } else {
-        drawW = w
-        drawH = w / imgRatio
-      }
-
-      ctx.drawImage(img, -drawW / 2, -drawH / 2, drawW, drawH)
+      ctx.drawImage(img, -baseW / 2, -baseH / 2, baseW, baseH)
       ctx.restore()
 
       // Export to blob
@@ -328,11 +395,11 @@ export function ImageAdjustModal({
                 <span>🔍 Perbesar (Zoom): {zoom.toFixed(1)}x</span>
                 <input
                   type="range"
-                  min="0.8"
+                  min="1"
                   max="3"
                   step="0.05"
                   value={zoom}
-                  onChange={(e) => setZoom(Number(e.target.value))}
+                  onChange={(e) => applyZoom(Number(e.target.value))}
                 />
               </label>
 
