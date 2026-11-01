@@ -447,6 +447,7 @@ export type CashierProduct = {
   item_type: string
   price: string
   is_available: boolean
+  image_path?: string | null
 }
 
 export function getCashierProducts() {

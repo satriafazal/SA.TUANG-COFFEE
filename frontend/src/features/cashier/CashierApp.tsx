@@ -41,8 +41,31 @@ const orderFilters: Array<{ value: QueueFilter; label: string }> = [
 ]
 
 const hasStoredStaffToken = typeof window !== 'undefined' && Boolean(window.localStorage.getItem('satuang-token'))
-const isCashierRole = (user: StaffUser) => user.role === 'cashier' || user.role === 'admin'
+const isCashierRole = (user: StaffUser) => user.role === 'cashier'
 const productTypeLabel = (type: CashierProduct['item_type']) => preparationGroupLabel(type)
+
+function CashierProductThumbnail({
+  imagePath,
+  name,
+  fallback,
+}: {
+  imagePath?: string | null
+  name: string
+  fallback: React.ReactNode
+}) {
+  const [failed, setFailed] = useState(false)
+  if (!imagePath || failed) {
+    return <>{fallback}</>
+  }
+  return (
+    <img
+      src={imagePath}
+      alt={name}
+      className="cashier-product-img"
+      onError={() => setFailed(true)}
+    />
+  )
+}
 
 function printMarkup(order: StaffOrder) {
   const created = escapeHtml(dateTime(order.created_at))
@@ -143,9 +166,13 @@ export default function CashierApp() {
     if (!localStorage.getItem('satuang-token')) return
     getCurrentStaff().then((user) => {
       if (!isCashierRole(user)) {
-        localStorage.removeItem('satuang-token')
-        localStorage.removeItem('satuang-staff')
-        setLoginError('Akun ini tidak memiliki akses Kasir.')
+        if (user.role === 'admin') {
+          setLoginError('Akun Administrator tidak memiliki izin akses ke portal Kasir. Silakan masuk menggunakan akun Kasir.')
+        } else {
+          localStorage.removeItem('satuang-token')
+          localStorage.removeItem('satuang-staff')
+          setLoginError('Akun ini tidak memiliki akses Kasir.')
+        }
         return
       }
       setStaff(user)
@@ -233,7 +260,7 @@ export default function CashierApp() {
       const user = await loginStaff(loginEmail.trim(), loginPassword)
       if (!isCashierRole(user)) {
         try { await logoutStaff() } catch { /* access token is cleared by logoutStaff */ }
-        throw new Error('Akun ini tidak memiliki akses Kasir.')
+        throw new Error('Akun Administrator tidak memiliki izin akses ke portal Kasir. Silakan masuk menggunakan akun Kasir.')
       }
       setStaff(user)
       setLoginPassword('')
@@ -361,7 +388,7 @@ export default function CashierApp() {
   return <div className="cashier-app">
     <header className="cashier-topbar">
       <a className="cashier-brand" href="/kasir"><span className="cashier-brand-mark">S</span><span><strong>SA.TUANG</strong><small>COFFEE · BANJAR WIJAYA</small></span></a>
-      <div className="cashier-account"><span className="cashier-account-avatar">{staff.name.slice(0, 1).toUpperCase()}</span><span className="cashier-account-copy"><b>{staff.name}</b><small>{staff.role === 'admin' ? 'Administrator' : 'Kasir'}</small></span><button className="cashier-logout" onClick={() => void signOut()}>Keluar</button></div>
+      <div className="cashier-account"><span className="cashier-account-avatar">{staff.name.slice(0, 1).toUpperCase()}</span><span className="cashier-account-copy"><b>{staff.name}</b><small>Kasir</small></span><button className="cashier-logout" onClick={() => void signOut()}>Keluar</button></div>
     </header>
     <main className="cashier-main">
       <div className="cashier-page-head"><div><span className="cashier-eyebrow">SA.TUANG COFFEE · BANJAR WIJAYA</span><h1>{view === 'orders' ? tab === 'active' ? 'Antrean pesanan' : 'Riwayat pesanan' : 'Ketersediaan menu'}</h1><p>{view === 'orders' ? tab === 'active' ? 'Pantau pembayaran dan alur persiapan setiap pesanan.' : 'Pesanan yang sudah diserahkan kepada pelanggan.' : 'Perbarui status menu sesuai ketersediaan hari ini.'}</p></div><div className="cashier-view-switch"><button className={view === 'orders' ? 'selected' : ''} onClick={() => { setView('orders'); setNotice(''); setError('') }}><span>▤</span> Pesanan</button><button className={view === 'menu' ? 'selected' : ''} onClick={() => { setLoadingProducts(true); setView('menu'); setNotice(''); setError('') }}><span style={{ display: 'inline-flex', alignItems: 'center' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg></span> Menu</button></div></div>
@@ -432,13 +459,19 @@ export default function CashierApp() {
                   {filteredBundles.map((bundle) => (
                     <article className={`cashier-product-card ${!bundle.is_active ? 'unavailable' : ''}`} key={`bundle-${bundle.id}`}>
                       <div className="cashier-product-icon">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 12 20 22 4 22 4 12" />
-                          <rect x="2" y="7" width="20" height="5" />
-                          <line x1="12" y1="22" x2="12" y2="7" />
-                          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
-                          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
-                        </svg>
+                        <CashierProductThumbnail
+                          imagePath={bundle.image_path}
+                          name={bundle.name}
+                          fallback={
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 12 20 22 4 22 4 12" />
+                              <rect x="2" y="7" width="20" height="5" />
+                              <line x1="12" y1="22" x2="12" y2="7" />
+                              <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                              <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+                            </svg>
+                          }
+                        />
                       </div>
                       <div className="cashier-product-content">
                         <span className="cashier-eyebrow">{bundle.category?.name ? bundle.category.name.toUpperCase() : 'PAKET MENU'}</span>
@@ -479,22 +512,28 @@ export default function CashierApp() {
                   {filteredProducts.map((product) => (
                     <article className={`cashier-product-card ${!product.is_available ? 'unavailable' : ''}`} key={product.id}>
                       <div className="cashier-product-icon">
-                        {product.item_type === 'food' ? (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 8v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8" />
-                            <path d="M4 8h16" />
-                            <path d="M12 4v4" />
-                            <path d="M8 4h8" />
-                          </svg>
-                        ) : (
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
-                            <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
-                            <line x1="6" y1="1" x2="6" y2="4" />
-                            <line x1="10" y1="1" x2="10" y2="4" />
-                            <line x1="14" y1="1" x2="14" y2="4" />
-                          </svg>
-                        )}
+                        <CashierProductThumbnail
+                          imagePath={product.image_path}
+                          name={product.name}
+                          fallback={
+                            product.item_type === 'food' ? (
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 8v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8" />
+                                <path d="M4 8h16" />
+                                <path d="M12 4v4" />
+                                <path d="M8 4h8" />
+                              </svg>
+                            ) : (
+                              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M18 8h1a4 4 0 0 1 0 8h-1" />
+                                <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" />
+                                <line x1="6" y1="1" x2="6" y2="4" />
+                                <line x1="10" y1="1" x2="10" y2="4" />
+                                <line x1="14" y1="1" x2="14" y2="4" />
+                              </svg>
+                            )
+                          }
+                        />
                       </div>
                       <div className="cashier-product-content">
                         <span className="cashier-eyebrow">{productTypeLabel(product.item_type)}</span>

@@ -21,7 +21,7 @@ class CashierOrderController extends Controller
         $products = Product::query()
             ->where('is_active', true)
             ->orderBy('name')
-            ->get(['id', 'name', 'item_type', 'price', 'is_available']);
+            ->get(['id', 'name', 'item_type', 'price', 'is_available', 'image_path']);
 
         $bundles = Bundle::query()
             ->with([
