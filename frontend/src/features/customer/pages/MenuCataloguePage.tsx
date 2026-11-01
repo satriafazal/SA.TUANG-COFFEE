@@ -41,7 +41,7 @@ export function MenuCataloguePage({
   categories,
   filtered,
   products = [],
-  bundles: _bundles = [],
+  bundles = [],
   loading,
   loadError,
   setGuestOfferOpen,
@@ -49,7 +49,7 @@ export function MenuCataloguePage({
   dispatch,
   onAddToCart,
 }: MenuCataloguePageProps) {
-  const [activeParentId, setActiveParentId] = useState<number | 'all'>('all')
+  const [activeParentId, setActiveParentId] = useState<number | 'all' | 'bundles'>('all')
   const [subCategory, setSubCategory] = useState<string>('semua')
 
   const rawProducts = products.length ? products : (filtered ?? [])
@@ -70,7 +70,7 @@ export function MenuCataloguePage({
 
   // Sub-kategori yang sesuai dengan Kategori Induk yang sedang aktif
   const relevantSubCategories = useMemo(() => {
-    if (activeParentId === 'all') {
+    if (activeParentId === 'all' || activeParentId === 'bundles') {
       const subs = categories.filter((c) => Boolean(c.parent_id))
       return subs.length ? subs : categories
     }
@@ -79,21 +79,69 @@ export function MenuCataloguePage({
 
   // Hitungan jumlah item per Kategori Induk
   const parentCounts = useMemo(() => {
-    const counts: Record<string | number, number> = { all: rawProducts.length }
+    const counts: Record<string | number, number> = {
+      all: rawProducts.length + bundles.length,
+      bundles: bundles.length,
+    }
     parentCategories.forEach((p) => {
-      const count = rawProducts.filter((prod) => {
+      const prodCount = rawProducts.filter((prod) => {
         if (prod.category_id === p.id) return true
         if (prod.category?.parent_id === p.id) return true
         if (p.item_type && prod.item_type === p.item_type) return true
         return false
       }).length
-      counts[p.id] = count
+      const bundleCount = bundles.filter((b) => {
+        if (b.category_id === p.id) return true
+        if (b.category?.parent_id === p.id) return true
+        return false
+      }).length
+      counts[p.id] = prodCount + bundleCount
     })
     return counts
-  }, [parentCategories, rawProducts])
+  }, [parentCategories, rawProducts, bundles])
+
+  // Filter Bundles (Paket Menu)
+  const displayedBundles = useMemo(() => {
+    if (activeParentId !== 'all' && activeParentId !== 'bundles') {
+      return bundles.filter((b) => {
+        const matchesCategory =
+          b.category_id === activeParentId || b.category?.parent_id === activeParentId
+        if (!matchesCategory) return false
+        if (query.trim()) {
+          const compNames = b.components?.map((c) => c.product?.name ?? '').join(' ') ?? ''
+          const match = `${b.name} ${b.description ?? ''} ${compNames}`
+            .toLowerCase()
+            .includes(query.trim().toLowerCase())
+          if (!match) return false
+        }
+        return true
+      })
+    }
+
+    return bundles.filter((bundle) => {
+      // 1. Filter Sub-Kategori
+      if (subCategory !== 'semua' && activeParentId !== 'bundles') {
+        const itemCatSlug = (bundle.category?.slug ?? '').toLowerCase()
+        if (itemCatSlug !== subCategory.toLowerCase()) return false
+      }
+
+      // 2. Filter Kata Kunci Pencarian
+      if (query.trim()) {
+        const compNames = bundle.components?.map((c) => c.product?.name ?? '').join(' ') ?? ''
+        const match = `${bundle.name} ${bundle.description ?? ''} ${compNames}`
+          .toLowerCase()
+          .includes(query.trim().toLowerCase())
+        if (!match) return false
+      }
+
+      return true
+    })
+  }, [bundles, activeParentId, subCategory, query])
 
   // Filter Produk
   const displayedProducts = useMemo(() => {
+    if (activeParentId === 'bundles') return []
+
     return rawProducts.filter((product) => {
       // 1. Filter Kategori Induk
       if (activeParentId !== 'all') {
@@ -123,9 +171,9 @@ export function MenuCataloguePage({
     })
   }, [rawProducts, activeParentId, parentCategories, subCategory, query])
 
-  const totalVisibleItems = displayedProducts.length
+  const totalVisibleItems = displayedProducts.length + displayedBundles.length
 
-  function handleParentTabChange(id: number | 'all') {
+  function handleParentTabChange(id: number | 'all' | 'bundles') {
     setActiveParentId(id)
     setSubCategory('semua')
   }
@@ -247,6 +295,17 @@ export function MenuCataloguePage({
                 <span className="tab-count">{parentCounts[parent.id] ?? 0}</span>
               </button>
             ))}
+
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeParentId === 'bundles'}
+              className={`main-tab-button ${activeParentId === 'bundles' ? 'active' : ''}`}
+              onClick={() => handleParentTabChange('bundles')}
+            >
+              <span>Paket Menu</span>
+              <span className="tab-count">{parentCounts.bundles ?? 0}</span>
+            </button>
           </div>
 
           {/* Baris 2: Sub-Kategori Chip Dinamis (Text-Only) */}
@@ -291,6 +350,94 @@ export function MenuCataloguePage({
           </div>
         ) : totalVisibleItems > 0 ? (
           <div className="product-grid">
+            {displayedBundles.map((bundle, index) => {
+              const isAvailable =
+                bundle.is_active &&
+                (!bundle.components ||
+                  bundle.components.every((c) => c.product?.is_available !== false))
+              return (
+                <article className="product-card bundle-card" key={`b-${bundle.id}`}>
+                  <div className={`product-visual visual-${(index + 3) % 6}`}>
+                    {bundle.image_path ? (
+                      <img
+                        src={bundle.image_path}
+                        alt={bundle.name}
+                        onError={(e) => {
+                          ;(e.currentTarget as HTMLImageElement).style.display = 'none'
+                        }}
+                      />
+                    ) : (
+                      <div className="product-visual-icon" aria-hidden="true">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 12 20 22 4 22 4 12" />
+                          <rect x="2" y="7" width="20" height="5" />
+                          <line x1="12" y1="22" x2="12" y2="7" />
+                          <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" />
+                          <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+                        </svg>
+                      </div>
+                    )}
+                  </div>
+                  <div className="product-info">
+                    <div className="product-category" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span>{bundle.category?.name ?? 'Paket Menu'}</span>
+                      <span style={{ fontSize: '9px', background: '#0c0d0e', color: '#fff', padding: '1px 6px', borderRadius: '3px', fontWeight: 'bold' }}>PAKET</span>
+                    </div>
+                    <h3>{bundle.name}</h3>
+                    <p>{bundle.description || 'Pilihan paket hemat SA.TUANG.'}</p>
+                    {bundle.components && bundle.components.length > 0 && (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', margin: '4px 0 10px' }}>
+                        {bundle.components.map((c) => (
+                          <span
+                            key={c.id}
+                            style={{
+                              fontSize: '10px',
+                              background: '#e9e6dd',
+                              border: '1px solid #c7c2b6',
+                              borderRadius: '3px',
+                              padding: '1px 5px',
+                              color: '#333',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {c.quantity}× {c.product?.name ?? 'Item'}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="product-buy">
+                      <strong>{rupiah(bundle.price)}</strong>
+                      {isViewOnly ? (
+                        <button
+                          className="order-cta-btn"
+                          disabled={!isAvailable}
+                          onClick={onStartOrder}
+                          title="Mulai memesan paket ini"
+                        >
+                          {isAvailable ? 'Pesan ↗' : 'Habis'}
+                        </button>
+                      ) : (
+                        <button
+                          className="add-button"
+                          disabled={!isAvailable}
+                          onClick={() => {
+                            dispatch({ type: 'add_bundle', bundle })
+                            onAddToCart?.({
+                              name: bundle.name,
+                              price: Number(bundle.price),
+                              image_path: bundle.image_path,
+                            })
+                          }}
+                          aria-label={`Tambah ${bundle.name} ke keranjang`}
+                        >
+                          {isAvailable ? '+' : 'Habis'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </article>
+              )
+            })}
             {displayedProducts.map((product, index) => (
               <article className="product-card" key={product.id}>
                 <div className={`product-visual visual-${index % 6}`}>
