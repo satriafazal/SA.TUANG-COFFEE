@@ -36,6 +36,11 @@ class AdminCatalogController extends Controller
                 'active_bundles' => Bundle::query()->where('is_active', true)->count(),
                 'active_promotions' => Promotion::query()->where('is_active', true)->count(),
                 'active_staff' => User::query()->whereIn('role', ['admin', 'cashier'])->where('is_active', true)->count(),
+                'active_banners' => Banner::query()->where('is_active', true)->count(),
+                'total_bundles' => Bundle::query()->count(),
+                'total_promotions' => Promotion::query()->count(),
+                'total_banners' => Banner::query()->count(),
+                'total_staff' => User::query()->whereIn('role', ['admin', 'cashier'])->count(),
                 'open_orders' => Order::query()->whereIn('order_status', [
                     'MENUNGGU_PEMBAYARAN', 'PESANAN_DITERIMA', 'SEDANG_DIBUAT', 'SIAP_DIAMBIL',
                 ])->count(),

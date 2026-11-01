@@ -170,29 +170,33 @@ export default function AdminApp() {
     setLoading(true)
     setError('')
     try {
-      const [nextDashboard, nextCategories, nextProducts] = await Promise.all([
+      const [
+        nextDashboard,
+        nextCategories,
+        nextProducts,
+        nextBundles,
+        nextPromos,
+        nextBanners,
+        nextStaff,
+      ] = await Promise.all([
         getAdminDashboard(),
         getAdminCategories(),
         getAdminProducts(),
+        getAdminBundles(),
+        getAdminPromotions(),
+        getAdminBanners(),
+        getAdminStaff(),
       ])
       setDashboard(nextDashboard)
       setCategories(nextCategories.categories)
       setProducts(nextProducts.products)
+      setBundles(nextBundles.bundles)
+      setPromotions(nextPromos.promotions)
+      setBanners(nextBanners.banners)
+      setStaffList(nextStaff.staff)
 
       // Fetch on-demand or background based on page
-      if (page === 'bundles') {
-        const nextBundles = await getAdminBundles()
-        setBundles(nextBundles.bundles)
-      } else if (page === 'promotions') {
-        const nextPromos = await getAdminPromotions()
-        setPromotions(nextPromos.promotions)
-      } else if (page === 'banners') {
-        const nextBanners = await getAdminBanners()
-        setBanners(nextBanners.banners)
-      } else if (page === 'staff') {
-        const nextStaff = await getAdminStaff()
-        setStaffList(nextStaff.staff)
-      } else if (page === 'orders') {
+      if (page === 'orders') {
         const nextOrders = await getAdminOrders(search, orderStatusFilter)
         setOrders(nextOrders.orders)
       } else if (page === 'audit-logs') {
@@ -1067,7 +1071,6 @@ export default function AdminApp() {
                   </div>
                   <div className="admin-filter-tools">
                     <button className="admin-button quiet" onClick={() => navigateTo('orders')}>Lihat semua pesanan →</button>
-                    <a className="admin-text-link" href="/kasir">Buka Kasir ↗</a>
                   </div>
                 </div>
                 <div className="admin-table-wrap">
