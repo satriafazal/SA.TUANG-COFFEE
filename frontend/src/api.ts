@@ -442,14 +442,10 @@ export function getAdminAuditLogs() {
   return request<{ audit_logs: AdminAuditLog[] }>('/admin/audit-logs')
 }
 
-export function getCashierOrders(arg1: boolean | string = '', arg2 = '') {
+export function getCashierOrders(search = '', date?: string) {
   const query = new URLSearchParams()
-  if (typeof arg1 === 'boolean') {
-    if (arg2.trim()) query.set('q', arg2.trim())
-    return request<{ orders: StaffOrder[] }>(`/cashier/orders${arg1 ? '/completed' : ''}${query.size ? `?${query}` : ''}`)
-  }
-  if (arg1.trim()) query.set('q', arg1.trim())
-  if (arg2) query.set('date', arg2)
+  if (search.trim()) query.set('q', search.trim())
+  if (date) query.set('date', date)
   return request<{ orders: StaffOrder[] }>(`/cashier/orders${query.size ? `?${query}` : ''}`)
 }
 
