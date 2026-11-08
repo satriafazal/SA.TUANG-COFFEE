@@ -13,8 +13,8 @@ Customer Web telah siap produksi (*Production-Ready*):
 - **Member Server-Side Auth:** Registrasi dan login Member terhubung penuh ke tabel `customers` database Laravel dengan kata sandi bcrypt aman, nomor HP/WhatsApp wajib (format `08...`), dan token Laravel Sanctum.
 - **Pemesanan Guest Zero-Friction:** Tamu dapat memesan cukup dengan Nama Panggilan tanpa dipaksa mengisi nomor HP/meja, mendukung mobilitas pelanggan yang suka berpindah meja di area cafe.
 - **Model Operasional Self Pick-up di Bar (ala Kopi Tuku / Starbucks):** Pelanggan menerima nomor tiket antrean harian singkat (misal: `#042`) untuk ditunjukkan ke kasir saat pembayaran dan dipanggil di bar saat pesanan siap.
-- **Proteksi Anti-Spam Cash Multi-Lapis:** Device Lock (maksimal 1 pesanan tunai pending per perangkat), batas waktu pembayaran 10 menit (auto-expire), dan Barista Gatekeeper (barista hanya meracik setelah kasir konfirmasi lunas).
-- **Riwayat Terpusat:** Riwayat pesanan tersimpan di database pusat dan dapat dipantau langsung melalui tab "Pesanan Saya".
+- **Proteksi Anti-Spam Cash Multi-Lapis & Midnight Reset 00:00:** Device Lock (maksimal 1 pesanan tunai pending per perangkat pada hari yang sama), batas waktu pembayaran 10 menit (auto-expire & auto-cancel), isolasi riwayat pesanan tamu per hari (`whereDate('created_at', today())`), dan reset otomatis token perangkat saat pergantian tanggal (00:00) agar status pesanan tidak pernah tersangkut.
+- **Riwayat Terpusat & Reset Mandiri:** Riwayat pesanan tersimpan di database pusat, dapat dipantau langsung melalui tab "Pesanan Saya", serta menyediakan tombol mandiri "Sesi Baru" bagi tamu untuk membersihkan antrean seketika.
 
 Cashier Web tersedia di `/kasir`, memakai autentikasi dan API backend, dengan antrean aktif/selesai, konfirmasi Cash, status persiapan per kelompok Makanan/Minuman/Lainnya, ketersediaan menu, dan cetak invoice + KOT melalui dialog cetak browser. Antarmuka kasir tidak menampilkan label demo/prototipe. Akun tetap harus disediakan lewat pengelolaan staf yang berwenang; tidak ada akun/credential bawaan.
 

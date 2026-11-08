@@ -53,6 +53,9 @@
   font: inherit;
 }
 .admin-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
   height: 72px;
   padding: 0 clamp(18px, 4vw, 58px);
   display: flex;
@@ -61,6 +64,7 @@
   gap: 22px;
   background: #202421;
   color: #f5f2e9;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 .admin-brand {
   display: inline-flex;
@@ -159,14 +163,18 @@
   grid-template-columns: 230px minmax(0, 1fr);
 }
 .admin-sidebar {
-  position: relative;
+  position: sticky;
+  top: 72px;
+  height: calc(100svh - 72px);
   min-height: calc(100svh - 72px);
-  padding: 30px 16px 20px;
+  padding: 24px 16px 20px;
   background: #e8e7e0;
   border-right: 1px solid #d9dad2;
   display: flex;
   flex-direction: column;
   gap: 5px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .admin-nav-label {
   padding: 0 12px 9px;
@@ -434,6 +442,87 @@
   color: #888c84 !important;
   font-size: 11px !important;
 }
+.admin-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 18px;
+  background: #fff;
+  border-top: 1px solid var(--admin-line);
+  color: #777b73;
+  font-size: 11px;
+}
+.admin-pagination-info {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.admin-pagination-counter {
+  color: #5d625a;
+  font-weight: 500;
+}
+.admin-pagination-size {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #777b73;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.admin-pagination-select {
+  height: 28px;
+  padding: 0 6px;
+  border: 1px solid #dcded6;
+  background: #fff;
+  color: #272c27;
+  font-size: 11px;
+  cursor: pointer;
+  outline-color: #c96738;
+}
+.admin-pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.admin-pagination-btn {
+  min-height: 28px;
+  padding: 0 8px;
+  border: 1px solid #dcded6;
+  background: #fff;
+  color: #434841;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, border 0.15s;
+}
+.admin-pagination-btn:hover:not(:disabled) {
+  background: #f2f2ed;
+  border-color: #aeb1a7;
+}
+.admin-pagination-btn.active {
+  background: #202421;
+  border-color: #202421;
+  color: #fff;
+}
+.admin-pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #fafaf8;
+  color: #aeb1a7;
+}
+.admin-pagination-ellipsis {
+  padding: 0 4px;
+  color: #9ca3af;
+  font-size: 11px;
+}
 .admin-status {
   display: inline-flex;
   align-items: center;
@@ -461,6 +550,11 @@
   border-color: #e7e7e2;
   background: #f4f4f1;
   color: #858981;
+}
+.admin-status.bad {
+  border-color: #f7d4d4;
+  background: #fdf2f2;
+  color: #b91c1c;
 }
 .admin-status.neutral {
   border-color: #e5e6df;
@@ -548,13 +642,15 @@
 }
 .admin-subline {
   display: block;
-  max-width: 290px;
   margin-top: 3px;
-  color: #92968e;
-  font-size: 9px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  color: #777b73;
+  font-size: 10px;
+  line-height: 1.45;
+  white-space: normal;
+  word-break: break-word;
+}
+.admin-table td .admin-subline {
+  max-width: 360px;
 }
 .admin-status-stack {
   display: flex;
@@ -771,6 +867,22 @@
   font-size: 10px;
   font-weight: 700;
 }
+.admin-form > label small,
+.admin-form-row > label small,
+.admin-form .admin-subline,
+.admin-field-tip,
+.admin-field-hint {
+  display: block;
+  max-width: none;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 400;
+  color: #777b73;
+  line-height: 1.45;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
 .admin-form input:not([type="checkbox"]),
 .admin-form select,
 .admin-form textarea {
@@ -795,7 +907,7 @@
 .admin-modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1000;
   padding: 20px;
   background: #111a;
   display: grid;
@@ -914,6 +1026,10 @@
     align-content: start;
   }
   .admin-sidebar {
+    position: sticky;
+    top: 65px;
+    z-index: 45;
+    height: auto;
     min-height: 0;
     padding: 10px 15px;
     border-right: 0;
@@ -923,6 +1039,7 @@
     align-items: center;
     gap: 6px;
     overflow-x: auto;
+    background: #e8e7e0;
   }
   .admin-sidebar .admin-nav-label,
   .admin-sidebar-foot {
@@ -1009,6 +1126,7 @@
     font-size: 9px;
   }
   .admin-sidebar {
+    top: 61px;
     padding-inline: 9px;
   }
   .admin-sidebar > button {

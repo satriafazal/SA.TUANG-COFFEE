@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SA.TUANG COFFEE - Database Entity Relationship Model (ERD)
+  Platform: PostgreSQL 17 / Laravel 12
+  Total Tables: 18 Entities
+  Generated for: Visual Paradigm AI & Database Reverse Engineering
+-->
+<database_schema name="satuang_db" version="1.0" engine="PostgreSQL 17">
+  
+  <domains>
+    <domain name="Authentication &amp; Staff">users, permissions, user_permissions</domain>
+    <domain name="Customer &amp; Membership">customers</domain>
+    <domain name="Catalog &amp; Promotions">categories, products, bundles, bundle_components, promotions, banners</domain>
+    <domain name="Orders &amp; Fulfillment">orders, order_items, order_status_histories</domain>
+    <domain name="Payments">payments</domain>
+    <domain name="Loyalty System">loyalty_rules, loyalty_ledger_entries</domain>
+    <domain name="Operations &amp; Auditing">print_jobs, audit_logs</domain>
+  </domains>
+
+  <entities>
+    <!-- 1. USERS -->
+    <entity name="users" description="Akun staf outlet (Admin dan Kasir)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key internal"/>
+      <attribute name="name" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="false" description="Nama lengkap staf"/>
+      <attribute name="email" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Email login staf"/>
+      <attribute name="email_verified_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu verifikasi email"/>
+      <attribute name="password" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="false" description="Hash password bcrypt"/>
+      <attribute name="role" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" default="'member'" description="Role: 'admin' | 'cashier'"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status aktif staf"/>
+      <attribute name="remember_token" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="true" description="Remember token auth"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 2. PERMISSIONS -->
+    <entity name="permissions" description="Daftar hak akses granular staf">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="name" type="VARCHAR(80)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Nama permission (cth: manage_catalog)"/>
+      <attribute name="description" type="VARCHAR(180)" is_pk="false" is_fk="false" nullable="true" description="Deskripsi hak akses"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 3. USER_PERMISSIONS -->
+    <entity name="user_permissions" description="Tabel pivot relasi staf dengan permissions">
+      <attribute name="user_id" type="BIGINT" is_pk="true" is_fk="true" references="users.id" nullable="false" on_delete="CASCADE" description="ID Staf"/>
+      <attribute name="permission_id" type="BIGINT" is_pk="true" is_fk="true" references="permissions.id" nullable="false" on_delete="CASCADE" description="ID Permission"/>
+      <attribute name="granted_by" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="ID Admin yang memberi izin"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diberikan"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 4. CUSTOMERS -->
+    <entity name="customers" description="Pelanggan terdaftar (Member) dan saldo poin loyalitas">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama lengkap member"/>
+      <attribute name="email" type="VARCHAR(180)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Email login member"/>
+      <attribute name="phone" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Nomor telepon (format 08...)"/>
+      <attribute name="password" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="false" description="Hash password bcrypt"/>
+      <attribute name="points_balance" type="INTEGER" is_pk="false" is_fk="false" nullable="false" default="0" description="Saldo poin loyalitas member"/>
+      <attribute name="remember_token" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="true" description="Remember token auth"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp registrasi"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp pembaruan profil"/>
+    </entity>
+
+    <!-- 5. CATEGORIES -->
+    <entity name="categories" description="Kategori produk hierarkis (Parent &amp; Sub-Kategori)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="parent_id" type="BIGINT" is_pk="false" is_fk="true" references="categories.id" nullable="true" on_delete="SET NULL" description="Self-referencing FK ke kategori induk"/>
+      <attribute name="name" type="VARCHAR(120)" is_pk="false" is_fk="false" nullable="false" description="Nama kategori"/>
+      <attribute name="slug" type="VARCHAR(140)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="URL Slug kategori"/>
+      <attribute name="item_type" type="VARCHAR(16)" is_pk="false" is_fk="false" nullable="false" default="'drink'" description="'drink' | 'food' | 'other'"/>
+      <attribute name="description" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Deskripsi kategori"/>
+      <attribute name="sort_order" type="SMALLINT" is_pk="false" is_fk="false" nullable="false" default="0" description="Urutan tampil di UI"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status aktif publik"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 6. PRODUCTS -->
+    <entity name="products" description="Katalog produk menu kafe satuan">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="category_id" type="BIGINT" is_pk="false" is_fk="true" references="categories.id" nullable="true" on_delete="SET NULL" description="Relasi ke kategori menu"/>
+      <attribute name="name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama produk/menu"/>
+      <attribute name="slug" type="VARCHAR(180)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="URL Slug produk"/>
+      <attribute name="description" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Deskripsi menu produk"/>
+      <attribute name="item_type" type="VARCHAR(16)" is_pk="false" is_fk="false" nullable="false" description="Kelompok: 'drink' | 'food' | 'other'"/>
+      <attribute name="price" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Harga jual rupiah"/>
+      <attribute name="image_path" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="true" description="Path penyimpanan gambar"/>
+      <attribute name="allow_notes" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="false" description="Apakah pelanggan boleh beri catatan"/>
+      <attribute name="is_available" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status ketersediaan stok kasir"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status tampil di katalog admin"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+      <attribute name="deleted_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Soft delete timestamp"/>
+    </entity>
+
+    <!-- 7. BUNDLES -->
+    <entity name="bundles" description="Paket bundling menu hemat">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="category_id" type="BIGINT" is_pk="false" is_fk="true" references="categories.id" nullable="true" on_delete="SET NULL" description="Kategori paket menu"/>
+      <attribute name="name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama paket bundle"/>
+      <attribute name="slug" type="VARCHAR(180)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="URL Slug bundle"/>
+      <attribute name="description" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Deskripsi isi paket"/>
+      <attribute name="price" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Harga total paket bundle"/>
+      <attribute name="image_path" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="true" description="Gambar cover paket"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status aktif bundle"/>
+      <attribute name="starts_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu mulai berlaku bundle"/>
+      <attribute name="ends_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu berakhir bundle"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 8. BUNDLE_COMPONENTS -->
+    <entity name="bundle_components" description="Pivot komponen produk penyusun dalam paket bundle">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="bundle_id" type="BIGINT" is_pk="false" is_fk="true" references="bundles.id" nullable="false" on_delete="CASCADE" description="ID Paket Bundle"/>
+      <attribute name="product_id" type="BIGINT" is_pk="false" is_fk="true" references="products.id" nullable="false" on_delete="RESTRICT" description="ID Produk item"/>
+      <attribute name="quantity" type="SMALLINT" is_pk="false" is_fk="false" nullable="false" default="1" description="Kuantitas produk dalam paket"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 9. PROMOTIONS -->
+    <entity name="promotions" description="Voucher kode promo diskon pesanan">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="code" type="VARCHAR(50)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Kode voucher promo (cth: HEMAT20)"/>
+      <attribute name="name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama program promosi"/>
+      <attribute name="description" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Syarat &amp; ketentuan promo"/>
+      <attribute name="discount_type" type="VARCHAR(20)" is_pk="false" is_fk="false" nullable="false" default="'fixed'" description="'fixed' (nominal) | 'percent' (%)"/>
+      <attribute name="discount_value" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Besar diskon"/>
+      <attribute name="min_spend" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" default="0" description="Syarat minimum belanja subtotal"/>
+      <attribute name="max_discount" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="true" description="Maksimum potongan diskon rupiah"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status aktif voucher"/>
+      <attribute name="starts_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Masa berlaku dimulai"/>
+      <attribute name="ends_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Masa berlaku berakhir"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 10. BANNERS -->
+    <entity name="banners" description="Banner carousel halaman depan">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="title" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Judul banner"/>
+      <attribute name="subtitle" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="true" description="Subjudul banner"/>
+      <attribute name="image_path" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="true" description="Path gambar banner"/>
+      <attribute name="link_url" type="VARCHAR(255)" is_pk="false" is_fk="false" nullable="true" description="Target URL klik banner"/>
+      <attribute name="sort_order" type="SMALLINT" is_pk="false" is_fk="false" nullable="false" default="0" description="Urutan rotasi banner"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="true" description="Status aktif tampil"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 11. ORDERS -->
+    <entity name="orders" description="Header transaksi pesanan pelanggan (Guest &amp; Member)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key internal"/>
+      <attribute name="order_number" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="false" is_unique="true" description="Nomor publik pesanan (cth: SAT-20261107-XXXX)"/>
+      <attribute name="daily_ticket_number" type="VARCHAR(16)" is_pk="false" is_fk="false" nullable="true" description="Nomor antrean harian panggil (cth: #001)"/>
+      <attribute name="user_id" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="ID Kasir pembuat pesanan (bila dibuat kasir)"/>
+      <attribute name="customer_id" type="BIGINT" is_pk="false" is_fk="true" references="customers.id" nullable="true" on_delete="SET NULL" description="ID Member pelanggan (bila login)"/>
+      <attribute name="guest_device_token" type="VARCHAR(96)" is_pk="false" is_fk="false" nullable="true" description="Token sesi unik perangkat tamu (harian)"/>
+      <attribute name="customer_name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama pemesan"/>
+      <attribute name="customer_phone" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="true" description="Nomor HP pemesan"/>
+      <attribute name="order_status" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="false" default="'MENUNGGU_PEMBAYARAN'" description="'MENUNGGU_PEMBAYARAN'|'DIPROSES'|'SEDANG_DIMASAK'|'SIAP_DIAMBIL'|'SELESAI'|'DIBATALKAN'"/>
+      <attribute name="payment_status" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" default="'MENUNGGU'" description="'MENUNGGU'|'SUDAH_DIBAYAR'|'GAGAL'|'KADALUARSA'"/>
+      <attribute name="payment_method" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" description="'cash' | 'cashless'"/>
+      <attribute name="subtotal" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Subtotal harga item"/>
+      <attribute name="discount_total" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" default="0" description="Diskon voucher promo"/>
+      <attribute name="points_discount" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" default="0" description="Diskon dari penukaran poin member"/>
+      <attribute name="total" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Grand total akhir yang harus dibayar"/>
+      <attribute name="points_redeemed" type="INTEGER" is_pk="false" is_fk="false" nullable="false" default="0" description="Jumlah poin loyalitas yang ditukar"/>
+      <attribute name="pricing_snapshot" type="JSONB" is_pk="false" is_fk="false" nullable="true" description="Snapshot kalkulasi diskon &amp; aturan"/>
+      <attribute name="idempotency_key" type="VARCHAR(96)" is_pk="false" is_fk="false" nullable="true" is_unique="true" description="Kunci pencegah double submit"/>
+      <attribute name="confirmed_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu pembayaran lunas"/>
+      <attribute name="completed_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu pesanan selesai diambil"/>
+      <attribute name="cancelled_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu pesanan dibatalkan"/>
+      <attribute name="expires_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Batas kadaluarsa (10m Cash / 15m Midtrans)"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu pemesanan"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu pembaruan status"/>
+    </entity>
+
+    <!-- 12. ORDER_ITEMS -->
+    <entity name="order_items" description="Rincian baris menu dalam pesanan">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="order_id" type="BIGINT" is_pk="false" is_fk="true" references="orders.id" nullable="false" on_delete="CASCADE" description="ID Pesanan"/>
+      <attribute name="product_id" type="BIGINT" is_pk="false" is_fk="true" references="products.id" nullable="true" on_delete="SET NULL" description="ID Produk (bila menu reguler)"/>
+      <attribute name="bundle_id" type="BIGINT" is_pk="false" is_fk="true" references="bundles.id" nullable="true" on_delete="SET NULL" description="ID Paket Bundle (bila menu paket)"/>
+      <attribute name="product_name_snapshot" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Nama produk historis saat dibeli"/>
+      <attribute name="item_type" type="VARCHAR(16)" is_pk="false" is_fk="false" nullable="false" description="'food' | 'drink' | 'other'"/>
+      <attribute name="quantity" type="SMALLINT" is_pk="false" is_fk="false" nullable="false" description="Kuantitas jumlah pesan"/>
+      <attribute name="unit_price" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Harga satuan historis"/>
+      <attribute name="line_total" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Total baris (unit_price * quantity)"/>
+      <attribute name="special_instructions" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Catatan khusus pelanggan (less sugar, dll)"/>
+      <attribute name="preparation_status" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" default="'MENUNGGU'" description="'MENUNGGU'|'SEDANG_DIBUAT'|'SIAP'"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 13. ORDER_STATUS_HISTORIES -->
+    <entity name="order_status_histories" description="Log jejak perubahan status operasional pesanan">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="order_id" type="BIGINT" is_pk="false" is_fk="true" references="orders.id" nullable="false" on_delete="CASCADE" description="ID Pesanan"/>
+      <attribute name="from_status" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="true" description="Status awal sebelum diubah"/>
+      <attribute name="to_status" type="VARCHAR(32)" is_pk="false" is_fk="false" nullable="false" description="Status baru"/>
+      <attribute name="actor_id" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="Staf kasir/sistem yang mengubah"/>
+      <attribute name="reason" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Alasan transisi (cth: auto expired, dibatalkan kasir)"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="false" description="Waktu transisi status"/>
+    </entity>
+
+    <!-- 14. PAYMENTS -->
+    <entity name="payments" description="Catatan transaksi pembayaran kasir manual &amp; Midtrans">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="order_id" type="BIGINT" is_pk="false" is_fk="true" references="orders.id" nullable="false" on_delete="CASCADE" description="ID Pesanan"/>
+      <attribute name="method" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" description="'cash' | 'cashless' (qris, gopay)"/>
+      <attribute name="status" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" default="'MENUNGGU'" description="'MENUNGGU'|'SUDAH_DIBAYAR'|'GAGAL'|'KADALUARSA'"/>
+      <attribute name="provider" type="VARCHAR(80)" is_pk="false" is_fk="false" nullable="true" description="'manual_cashier' | 'midtrans'"/>
+      <attribute name="provider_reference" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="true" is_unique="true" description="ID transaksi Midtrans atau kode referensi"/>
+      <attribute name="idempotency_key" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="true" is_unique="true" description="Kunci pencegah double payment"/>
+      <attribute name="amount" type="NUMERIC(12,2)" is_pk="false" is_fk="false" nullable="false" description="Nominal dibayarkan"/>
+      <attribute name="provider_metadata" type="JSONB" is_pk="false" is_fk="false" nullable="true" description="Payload webhook response Midtrans"/>
+      <attribute name="verified_by" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="Kasir yang memverifikasi pembayaran cash"/>
+      <attribute name="verified_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu verifikasi pelunasan"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 15. LOYALTY_RULES -->
+    <entity name="loyalty_rules" description="Konfigurasi skema poin loyalitas berversi (Perolehan &amp; Penukaran)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="rule_type" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" description="'earning' | 'redemption'"/>
+      <attribute name="version" type="INTEGER" is_pk="false" is_fk="false" nullable="false" description="Nomor versi aturan skema"/>
+      <attribute name="name" type="VARCHAR(160)" is_pk="false" is_fk="false" nullable="false" description="Label nama aturan"/>
+      <attribute name="configuration" type="JSONB" is_pk="false" is_fk="false" nullable="false" description="Aturan angka (threshold, point_value, min, max_pct)"/>
+      <attribute name="is_active" type="BOOLEAN" is_pk="false" is_fk="false" nullable="false" default="false" description="Status aturan yang sedang aktif"/>
+      <attribute name="starts_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Mulai berlaku skema"/>
+      <attribute name="ends_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Berakhir skema"/>
+      <attribute name="created_by" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="Admin pembuat aturan"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 16. LOYALTY_LEDGER_ENTRIES -->
+    <entity name="loyalty_ledger_entries" description="Buku besar mutasi poin member (Immutable ledger)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="member_id" type="BIGINT" is_pk="false" is_fk="true" references="customers.id" nullable="false" on_delete="CASCADE" description="ID Member penerima/pengguna poin"/>
+      <attribute name="order_id" type="BIGINT" is_pk="false" is_fk="true" references="orders.id" nullable="true" on_delete="SET NULL" description="ID Pesanan terkait transaksi"/>
+      <attribute name="loyalty_rule_id" type="BIGINT" is_pk="false" is_fk="true" references="loyalty_rules.id" nullable="true" on_delete="SET NULL" description="ID Aturan poin yang digunakan"/>
+      <attribute name="entry_type" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" description="'earn'|'redeem'|'refund'|'adjustment'|'expire'"/>
+      <attribute name="points_delta" type="INTEGER" is_pk="false" is_fk="false" nullable="false" description="Delta mutasi (positif atau negatif)"/>
+      <attribute name="rule_snapshot" type="JSONB" is_pk="false" is_fk="false" nullable="true" description="Snapshot aturan saat transaksi"/>
+      <attribute name="idempotency_key" type="VARCHAR(120)" is_pk="false" is_fk="false" nullable="true" is_unique="true" description="Kunci pencegah double earn/redeem"/>
+      <attribute name="reason" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Keterangan mutasi poin"/>
+      <attribute name="actor_id" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="Staf penyesuai poin manual"/>
+      <attribute name="reverses_entry_id" type="BIGINT" is_pk="false" is_fk="true" references="loyalty_ledger_entries.id" nullable="true" on_delete="SET NULL" description="Self-ref ID entri yang dibalik/dikoreksi"/>
+      <attribute name="expires_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Masa kadaluarsa poin"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="false" description="Waktu mutasi poin tercatat"/>
+    </entity>
+
+    <!-- 17. PRINT_JOBS -->
+    <entity name="print_jobs" description="Antrean cetak struk kasir &amp; Kitchen Order Ticket (KOT)">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="order_id" type="BIGINT" is_pk="false" is_fk="true" references="orders.id" nullable="false" on_delete="CASCADE" description="ID Pesanan yang dicetak"/>
+      <attribute name="retry_of_id" type="BIGINT" is_pk="false" is_fk="true" references="print_jobs.id" nullable="true" on_delete="SET NULL" description="Self-ref ID job asal jika cetak ulang"/>
+      <attribute name="document_type" type="VARCHAR(16)" is_pk="false" is_fk="false" nullable="false" description="'invoice' | 'kot'"/>
+      <attribute name="destination" type="VARCHAR(80)" is_pk="false" is_fk="false" nullable="true" description="'cashier_thermal' | 'kitchen_bar'"/>
+      <attribute name="status" type="VARCHAR(24)" is_pk="false" is_fk="false" nullable="false" default="'MENUNGGU'" description="'MENUNGGU' | 'SUKSES' | 'GAGAL'"/>
+      <attribute name="attempt_count" type="SMALLINT" is_pk="false" is_fk="false" nullable="false" default="0" description="Jumlah percobaan cetak"/>
+      <attribute name="last_error" type="TEXT" is_pk="false" is_fk="false" nullable="true" description="Pesan error printer"/>
+      <attribute name="printed_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Waktu cetak berhasil"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp dibuat"/>
+      <attribute name="updated_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="true" description="Timestamp diperbarui"/>
+    </entity>
+
+    <!-- 18. AUDIT_LOGS -->
+    <entity name="audit_logs" description="Audit trail pencatatan perubahan data sensitif backoffice">
+      <attribute name="id" type="BIGINT" is_pk="true" is_fk="false" nullable="false" auto_increment="true" description="Primary Key"/>
+      <attribute name="actor_id" type="BIGINT" is_pk="false" is_fk="true" references="users.id" nullable="true" on_delete="SET NULL" description="ID Staf pelaku perubahan"/>
+      <attribute name="action" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="false" description="Nama aksi (cth: update_loyalty_settings)"/>
+      <attribute name="subject_type" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="true" description="Nama model/entitas sasaran"/>
+      <attribute name="subject_id" type="VARCHAR(100)" is_pk="false" is_fk="false" nullable="true" description="ID entitas sasaran"/>
+      <attribute name="before_snapshot" type="JSONB" is_pk="false" is_fk="false" nullable="true" description="Snapshot data sebelum perubahan"/>
+      <attribute name="after_snapshot" type="JSONB" is_pk="false" is_fk="false" nullable="true" description="Snapshot data sesudah perubahan"/>
+      <attribute name="ip_address" type="VARCHAR(45)" is_pk="false" is_fk="false" nullable="true" description="Alamat IP pelaku"/>
+      <attribute name="created_at" type="TIMESTAMPTZ" is_pk="false" is_fk="false" nullable="false" description="Waktu pencatatan log"/>
+    </entity>
+  </entities>
+
+  <!-- RELATIONSHIPS & CARDINALITIES (Crow's Foot Notation) -->
+  <relationships>
+    <relation name="user_permissions_user" from="users" to="user_permissions" type="1:N" cardinality="1 to 0..*" from_key="id" to_key="user_id" on_delete="CASCADE"/>
+    <relation name="user_permissions_permission" from="permissions" to="user_permissions" type="1:N" cardinality="1 to 0..*" from_key="id" to_key="permission_id" on_delete="CASCADE"/>
+    <relation name="user_permissions_granter" from="users" to="user_permissions" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="granted_by" on_delete="SET NULL"/>
+
+    <relation name="category_self_hierarchy" from="categories" to="categories" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="parent_id" on_delete="SET NULL" description="Sub-kategori hierarki"/>
+    <relation name="category_products" from="categories" to="products" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="category_id" on_delete="SET NULL"/>
+    <relation name="category_bundles" from="categories" to="bundles" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="category_id" on_delete="SET NULL"/>
+
+    <relation name="bundle_components_bundle" from="bundles" to="bundle_components" type="1:N" cardinality="1 to 1..*" from_key="id" to_key="bundle_id" on_delete="CASCADE"/>
+    <relation name="bundle_components_product" from="products" to="bundle_components" type="1:N" cardinality="1 to 0..*" from_key="id" to_key="product_id" on_delete="RESTRICT"/>
+
+    <relation name="customer_orders" from="customers" to="orders" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="customer_id" on_delete="SET NULL" description="Pesanan oleh member"/>
+    <relation name="staff_orders" from="users" to="orders" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="user_id" on_delete="SET NULL" description="Pesanan dicatat kasir"/>
+
+    <relation name="order_items_order" from="orders" to="order_items" type="1:N" cardinality="1 to 1..*" from_key="id" to_key="order_id" on_delete="CASCADE"/>
+    <relation name="order_items_product" from="products" to="order_items" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="product_id" on_delete="SET NULL"/>
+    <relation name="order_items_bundle" from="bundles" to="order_items" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="bundle_id" on_delete="SET NULL"/>
+
+    <relation name="order_payments" from="orders" to="payments" type="1:N" cardinality="1 to 1..*" from_key="id" to_key="order_id" on_delete="CASCADE"/>
+    <relation name="staff_payment_verification" from="users" to="payments" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="verified_by" on_delete="SET NULL"/>
+
+    <relation name="order_status_history_order" from="orders" to="order_status_histories" type="1:N" cardinality="1 to 1..*" from_key="id" to_key="order_id" on_delete="CASCADE"/>
+    <relation name="order_status_history_staff" from="users" to="order_status_histories" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="actor_id" on_delete="SET NULL"/>
+
+    <relation name="loyalty_rule_creator" from="users" to="loyalty_rules" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="created_by" on_delete="SET NULL"/>
+    <relation name="customer_loyalty_ledger" from="customers" to="loyalty_ledger_entries" type="1:N" cardinality="1 to 0..*" from_key="id" to_key="member_id" on_delete="CASCADE"/>
+    <relation name="order_loyalty_ledger" from="orders" to="loyalty_ledger_entries" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="order_id" on_delete="SET NULL"/>
+    <relation name="loyalty_rule_ledger" from="loyalty_rules" to="loyalty_ledger_entries" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="loyalty_rule_id" on_delete="SET NULL"/>
+    <relation name="loyalty_ledger_reversal" from="loyalty_ledger_entries" to="loyalty_ledger_entries" type="1:N" cardinality="0..1 to 0..1" from_key="id" to_key="reverses_entry_id" on_delete="SET NULL" description="Audit pembatalan poin"/>
+    <relation name="loyalty_ledger_actor" from="users" to="loyalty_ledger_entries" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="actor_id" on_delete="SET NULL"/>
+
+    <relation name="order_print_jobs" from="orders" to="print_jobs" type="1:N" cardinality="1 to 0..*" from_key="id" to_key="order_id" on_delete="CASCADE"/>
+    <relation name="print_job_retry" from="print_jobs" to="print_jobs" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="retry_of_id" on_delete="SET NULL" description="Retry print job"/>
+
+    <relation name="audit_logs_actor" from="users" to="audit_logs" type="1:N" cardinality="0..1 to 0..*" from_key="id" to_key="actor_id" on_delete="SET NULL"/>
+  </relationships>
+
+</database_schema>
+
