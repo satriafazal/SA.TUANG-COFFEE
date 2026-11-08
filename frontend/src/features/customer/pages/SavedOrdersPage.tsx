@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { syncPaymentStatus } from '../../../api'
 import type { CustomerOrderRecord } from '../../../types'
 import { orderStatusLabels, paymentStatusLabels } from '../../../utils/constants'
 import { orderDateFormatter, rupiah } from '../../../utils/formatters'
@@ -14,6 +16,8 @@ interface SavedOrdersPageProps {
   moveTo: (screen: Screen) => void
   onCompleteOrder?: (orderNumber: string) => Promise<void> | void
   completingOrderNumber?: string | null
+  onResetGuestSession?: () => void
+  onPaySnap?: (snapToken: string) => void
 }
 
 export function SavedOrdersPage({
@@ -26,7 +30,24 @@ export function SavedOrdersPage({
   moveTo,
   onCompleteOrder,
   completingOrderNumber,
+  onResetGuestSession,
+  onPaySnap,
 }: SavedOrdersPageProps) {
+  const [syncingOrderNumber, setSyncingOrderNumber] = useState<string | null>(null)
+
+  async function handleRefreshSingle(order: CustomerOrderRecord) {
+    if (order.payment_status === 'MENUNGGU' && (order.payment_method === 'midtrans' || order.snap_token)) {
+      setSyncingOrderNumber(order.order_number)
+      try {
+        await syncPaymentStatus(order.order_number)
+      } catch {
+        // silently fallback to normal refresh
+      } finally {
+        setSyncingOrderNumber(null)
+      }
+    }
+    refreshOrders()
+  }
   return (
     <section
       className={`orders-page ${isMember ? 'member-orders-page' : 'guest-orders-page'}`}
@@ -44,10 +65,24 @@ export function SavedOrdersPage({
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          {!isMember && onResetGuestSession && currentOrders.length > 0 && (
+            <button
+              type="button"
+              className="button button-ghost"
+              onClick={() => {
+                if (window.confirm('Mulai sesi tamu baru? Nomor antrean hari ini akan direset dari perangkat ini.')) {
+                  onResetGuestSession()
+                }
+              }}
+              title="Reset sesi perangkat dan bersihkan tampilan antrean"
+            >
+              Sesi Baru
+            </button>
+          )}
           <button
             type="button"
             className="button button-outline"
-            onClick={refreshOrders}
+            onClick={() => refreshOrders()}
             disabled={isRefreshing}
           >
             {isRefreshing ? 'Memuat…' : '↻ Perbarui'}
@@ -135,26 +170,28 @@ export function SavedOrdersPage({
                           <div>
                             <strong>{group.label}</strong>
                             <small>
-                              {group.items.length} item · {group.readyCount}/{group.totalCount} siap
+                              {group.items.length} item{order.order_status !== 'DIBATALKAN' ? ` · ${group.readyCount}/${group.totalCount} siap` : ''}
                             </small>
                           </div>
                         </div>
-                        <span
-                          className={`customer-prep-status-pill ${
-                            group.status === 'SIAP'
-                              ? 'ready'
+                        {order.order_status !== 'DIBATALKAN' && (
+                          <span
+                            className={`customer-prep-status-pill ${
+                              group.status === 'SIAP'
+                                ? 'ready'
+                                : group.status === 'DIPROSES'
+                                ? 'processing'
+                                : 'waiting'
+                            }`}
+                          >
+                            <span className="prep-dot" />
+                            {group.status === 'SIAP'
+                              ? 'Siap'
                               : group.status === 'DIPROSES'
-                              ? 'processing'
-                              : 'waiting'
-                          }`}
-                        >
-                          <span className="prep-dot" />
-                          {group.status === 'SIAP'
-                            ? 'Siap'
-                            : group.status === 'DIPROSES'
-                            ? 'Sedang dibuat'
-                            : 'Menunggu'}
-                        </span>
+                              ? 'Sedang dibuat'
+                              : 'Menunggu'}
+                          </span>
+                        )}
                       </div>
 
                       <div className="customer-prep-items">
@@ -177,21 +214,23 @@ export function SavedOrdersPage({
                                   {rupiah(Number(item.line_total))}
                                 </span>
                               )}
-                              <span
-                                className={`prep-item-chip ${
-                                  item.preparation_status === 'SIAP'
-                                    ? 'ready'
+                              {order.order_status !== 'DIBATALKAN' && (
+                                <span
+                                  className={`prep-item-chip ${
+                                    item.preparation_status === 'SIAP'
+                                      ? 'ready'
+                                      : item.preparation_status === 'DIPROSES'
+                                      ? 'processing'
+                                      : 'waiting'
+                                  }`}
+                                >
+                                  {item.preparation_status === 'SIAP'
+                                    ? 'Siap'
                                     : item.preparation_status === 'DIPROSES'
-                                    ? 'processing'
-                                    : 'waiting'
-                                }`}
-                              >
-                                {item.preparation_status === 'SIAP'
-                                  ? 'Siap'
-                                  : item.preparation_status === 'DIPROSES'
-                                  ? 'Diproses'
-                                  : 'Menunggu'}
-                              </span>
+                                    ? 'Diproses'
+                                    : 'Menunggu'}
+                                </span>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -249,6 +288,40 @@ export function SavedOrdersPage({
                   </div>
                 )}
 
+                {/* Banner pembayaran online belum selesai */}
+                {order.payment_status === 'MENUNGGU' && (order.payment_method === 'midtrans' || Boolean(order.snap_token)) && (
+                  <div
+                    style={{
+                      background: '#fff8ea',
+                      border: '1px solid #fedc9d',
+                      borderRadius: '8px',
+                      padding: '12px 14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '12px',
+                      marginTop: '12px',
+                      fontSize: '12px',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <div>
+                      <strong style={{ color: '#8a4b08', display: 'block' }}>Menunggu Pembayaran Online</strong>
+                      <span style={{ color: '#666' }}>Buka jendela Midtrans untuk bayar via QRIS atau Virtual Account.</span>
+                    </div>
+                    {order.snap_token && onPaySnap && (
+                      <button
+                        type="button"
+                        className="button button-accent"
+                        style={{ minHeight: '32px', padding: '0 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
+                        onClick={() => onPaySnap(order.snap_token!)}
+                      >
+                        ⚡ Bayar Sekarang (Snap)
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="saved-order-total">
                   <span>
                     Total ·{' '}
@@ -260,6 +333,15 @@ export function SavedOrdersPage({
                 </div>
 
                 <div className="saved-order-actions">
+                  {order.payment_status === 'MENUNGGU' && order.snap_token && onPaySnap && (
+                    <button
+                      type="button"
+                      className="button button-accent"
+                      onClick={() => onPaySnap(order.snap_token!)}
+                    >
+                      Bayar Online ↗
+                    </button>
+                  )}
                   <button
                     className="button button-outline"
                     onClick={() => copyOrderNumber(order.order_number)}
@@ -268,10 +350,10 @@ export function SavedOrdersPage({
                   </button>
                   <button
                     className="button button-dark"
-                    disabled={isRefreshing}
-                    onClick={refreshOrders}
+                    disabled={isRefreshing || syncingOrderNumber === order.order_number}
+                    onClick={() => void handleRefreshSingle(order)}
                   >
-                    {isRefreshing ? 'Memperbarui…' : 'Perbarui status'}
+                    {isRefreshing || syncingOrderNumber === order.order_number ? 'Memperbarui…' : 'Perbarui status'}
                   </button>
                 </div>
               </article>

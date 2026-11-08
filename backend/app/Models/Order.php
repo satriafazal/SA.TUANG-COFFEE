@@ -16,6 +16,8 @@ class Order extends Model
         'idempotency_key', 'confirmed_at', 'completed_at', 'cancelled_at', 'expires_at',
     ];
 
+    protected $appends = ['snap_token', 'snap_redirect_url'];
+
     protected function casts(): array
     {
         return [
@@ -60,5 +62,86 @@ class Order extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function getSnapTokenAttribute(): ?string
+    {
+        if ($this->relationLoaded('payments')) {
+            $payment = $this->payments
+                ->where('provider', 'midtrans')
+                ->where('status', 'MENUNGGU')
+                ->first();
+
+            return $payment?->provider_reference;
+        }
+
+        return null;
+    }
+
+    public function getSnapRedirectUrlAttribute(): ?string
+    {
+        if ($this->relationLoaded('payments')) {
+            $payment = $this->payments
+                ->where('provider', 'midtrans')
+                ->where('status', 'MENUNGGU')
+                ->first();
+
+            return $payment?->provider_metadata['redirect_url']
+                ?? $payment?->provider_metadata['snap_redirect_url']
+                ?? null;
+        }
+
+        return null;
+    }
+
+    public function refundRedeemedPointsIfCancelled(): bool
+    {
+        if ($this->points_redeemed > 0 && $this->customer_id) {
+            $snapshot = $this->pricing_snapshot ?? [];
+            if (!empty($snapshot['loyalty']['points_refunded'])) {
+                return false;
+            }
+
+            $customer = Customer::query()->where('id', $this->customer_id)->lockForUpdate()->first();
+            if ($customer) {
+                $customer->increment('points_balance', $this->points_redeemed);
+
+                $snapshot['loyalty']['points_refunded'] = true;
+                $snapshot['loyalty']['points_refunded_at'] = now()->toISOString();
+                $this->update(['pricing_snapshot' => $snapshot]);
+
+                $this->statusHistory()->create([
+                    'from_status' => $this->order_status,
+                    'to_status' => 'DIBATALKAN',
+                    'reason' => "Pengembalian {$this->points_redeemed} poin loyalitas karena pesanan dibatalkan/kedaluwarsa.",
+                ]);
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function expirePendingOrders(): int
+    {
+        $expired = static::query()
+            ->where('order_status', 'MENUNGGU_PEMBAYARAN')
+            ->where('payment_status', 'MENUNGGU')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<', now())
+            ->get();
+
+        $count = 0;
+        foreach ($expired as $order) {
+            $order->update([
+                'order_status' => 'DIBATALKAN',
+                'cancelled_at' => now(),
+            ]);
+            $order->refundRedeemedPointsIfCancelled();
+            $count++;
+        }
+
+        return $count;
     }
 }

@@ -146,4 +146,105 @@ class CustomerMemberApiTest extends TestCase
             ->assertJsonCount(1, 'orders')
             ->assertJsonPath('orders.0.daily_ticket_number', '#001');
     }
+
+    public function test_guest_my_orders_excludes_orders_from_yesterday(): void
+    {
+        $category = Category::create(['name' => 'Signature', 'slug' => 'signature', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Kopi Tuang',
+            'slug' => 'kopi-tuang-yesterday',
+            'item_type' => 'drink',
+            'price' => '22000.00',
+            'is_active' => true,
+            'is_available' => true,
+        ]);
+
+        $deviceToken = 'dev-token-daily-test';
+
+        // Order created yesterday
+        $yesterdayOrder = Order::create([
+            'order_number' => 'ST-261102-ABC123',
+            'daily_ticket_number' => '#005',
+            'customer_name' => 'Guest Yesterday',
+            'guest_device_token' => $deviceToken,
+            'subtotal' => '22000.00',
+            'total' => '22000.00',
+            'payment_method' => 'cash',
+            'payment_status' => 'LUNAS',
+            'order_status' => 'SELESAI',
+        ]);
+        $yesterdayOrder->created_at = now()->subDays(2);
+        $yesterdayOrder->saveQuietly();
+
+        // my-orders for guest device should not include yesterday's order
+        $resOrders = $this->getJson("/api/v1/orders/my-orders?device_token={$deviceToken}");
+        $resOrders->assertOk()
+            ->assertJsonCount(0, 'orders');
+
+        // Order created today
+        $todayOrder = Order::create([
+            'order_number' => 'ST-261103-DEF456',
+            'daily_ticket_number' => '#001',
+            'customer_name' => 'Guest Today',
+            'guest_device_token' => $deviceToken,
+            'subtotal' => '22000.00',
+            'total' => '22000.00',
+            'payment_method' => 'cash',
+            'payment_status' => 'MENUNGGU',
+            'order_status' => 'MENUNGGU_PEMBAYARAN',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // Now my-orders returns today's order only
+        $resOrders2 = $this->getJson("/api/v1/orders/my-orders?device_token={$deviceToken}");
+        $resOrders2->assertOk()
+            ->assertJsonCount(1, 'orders')
+            ->assertJsonPath('orders.0.order_number', 'ST-261103-DEF456');
+    }
+
+    public function test_guest_can_order_today_even_if_yesterday_had_pending_order(): void
+    {
+        $category = Category::create(['name' => 'Kopi', 'slug' => 'kopi-pending', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'Latte',
+            'slug' => 'latte-pending',
+            'item_type' => 'drink',
+            'price' => '25000.00',
+            'is_active' => true,
+            'is_available' => true,
+        ]);
+
+        $deviceToken = 'dev-pending-yesterday';
+
+        // Yesterday order left unpaid/pending
+        $yesterdayPending = Order::create([
+            'order_number' => 'ST-261102-PEND01',
+            'daily_ticket_number' => '#099',
+            'customer_name' => 'Unpaid Guest',
+            'guest_device_token' => $deviceToken,
+            'subtotal' => '25000.00',
+            'total' => '25000.00',
+            'payment_method' => 'cash',
+            'payment_status' => 'MENUNGGU',
+            'order_status' => 'MENUNGGU_PEMBAYARAN',
+        ]);
+        $yesterdayPending->created_at = now()->subDays(2);
+        $yesterdayPending->saveQuietly();
+
+        // Today guest places a new order: should NOT be blocked by yesterday's pending order
+        $res = $this->postJson('/api/v1/orders', [
+            'customer_name' => 'Fresh Guest Today',
+            'guest_device_token' => $deviceToken,
+            'payment_method' => 'cash',
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ]);
+
+        $res->assertCreated()
+            ->assertJsonPath('order.customer_name', 'Fresh Guest Today');
+    }
 }

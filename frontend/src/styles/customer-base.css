@@ -1026,6 +1026,12 @@ a {
   padding: 10px;
   border: 1px solid var(--line);
   font-size: 11px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.payment-choice.selected {
+  border-color: var(--accent);
+  background: #fdfaf5;
 }
 .payment-choice input {
   accent-color: var(--accent);

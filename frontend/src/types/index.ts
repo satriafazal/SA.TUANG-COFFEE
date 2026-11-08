@@ -59,9 +59,12 @@ export type OrderReceipt = {
     customer_name: string
     order_status: string
     payment_status: string
+    payment_method: string
     total: string
     created_at: string
     expires_at?: string | null
+    snap_token?: string | null
+    snap_redirect_url?: string | null
   }
   message: string
 }
@@ -104,6 +107,8 @@ export type CustomerOrderRecord = {
   total: string
   created_at: string
   expires_at?: string | null
+  snap_token?: string | null
+  snap_redirect_url?: string | null
   items: Array<{
     id: number
     product_name_snapshot: string
@@ -122,4 +127,20 @@ export type CustomerBanner = {
   subtitle: string | null
   image_path: string | null
   link_url: string | null
+}
+
+declare global {
+  interface Window {
+    snap?: {
+      pay: (
+        token: string,
+        callbacks?: {
+          onSuccess?: (result: any) => void
+          onPending?: (result: any) => void
+          onError?: (result: any) => void
+          onClose?: () => void
+        }
+      ) => void
+    }
+  }
 }

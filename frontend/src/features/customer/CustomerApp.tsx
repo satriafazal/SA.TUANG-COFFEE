@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -8,6 +9,7 @@ import {
 } from 'react'
 import {
   createCashOrder,
+  getLoyaltySettings,
   getMemberMe,
   getMenu,
   getMyOrders,
@@ -18,6 +20,7 @@ import {
   completeCustomerOrder,
   validatePromoCode,
   type CustomerBanner,
+  type LoyaltySettings,
   type PromoValidationResult,
 } from '../../api'
 import type {
@@ -28,7 +31,11 @@ import type {
   Product,
   TrackedOrder,
 } from '../../types'
-import { getOrCreateDeviceToken } from '../../utils/deviceToken'
+import {
+  forceResetDeviceSession,
+  getOrCreateDeviceToken,
+  getTodayDateString,
+} from '../../utils/deviceToken'
 
 import {
   CartDrawer,
@@ -156,7 +163,8 @@ function startingScreen(): Screen {
 }
 
 export function CustomerApp() {
-  const deviceToken = useRef(getOrCreateDeviceToken()).current
+  const [deviceToken, setDeviceToken] = useState<string>(() => getOrCreateDeviceToken())
+  const lastActiveDateRef = useRef(getTodayDateString())
   const [menu, setMenu] = useState<Product[]>([])
   const [bundles, setBundles] = useState<CustomerBundle[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -183,6 +191,7 @@ export function CustomerApp() {
   const [checkoutPhone, setCheckoutPhone] = useState('')
   const [checkoutError, setCheckoutError] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'midtrans'>('cash')
   const [guestOfferOpen, setGuestOfferOpen] = useState(false)
   const [cartToast, setCartToast] = useState<CartToastItem | null>(null)
   const toastTimeoutRef = useRef<number | null>(null)
@@ -210,6 +219,17 @@ export function CustomerApp() {
   const [promoDiscount, setPromoDiscount] = useState<number>(0)
   const [promoMessage, setPromoMessage] = useState('')
   const [checkingPromo, setCheckingPromo] = useState(false)
+
+  // Loyalty Settings & Redemption State
+  const [loyaltySettings, setLoyaltySettings] = useState<LoyaltySettings | null>(null)
+  const [usePoints, setUsePoints] = useState(false)
+  const [pointsToRedeem, setPointsToRedeem] = useState(0)
+
+  useEffect(() => {
+    getLoyaltySettings()
+      .then((res) => setLoyaltySettings(res.settings))
+      .catch(() => {})
+  }, [])
 
   // Real backend member & orders state
   const [member, setMember] = useState<CustomerProfile | null>(null)
@@ -240,16 +260,58 @@ export function CustomerApp() {
   const sessionMode: CustomerMode = member ? 'member' : 'guest'
   const hasEntered = activeOrderingSession
 
-  async function fetchOrders() {
+  const fetchOrders = useCallback(async (tokenArg?: unknown) => {
+    const validToken = typeof tokenArg === 'string' && tokenArg.trim() !== ''
+      ? tokenArg.trim()
+      : deviceToken
+
     setIsRefreshingOrders(true)
     try {
-      const res = await getMyOrders(deviceToken)
+      const res = await getMyOrders(validToken)
       setOrders(res.orders)
     } catch {
       // silently handle network error
     } finally {
       setIsRefreshingOrders(false)
     }
+  }, [deviceToken])
+
+  // Auto-reset when date rolls over past midnight (00:00)
+  useEffect(() => {
+    function checkMidnightRollover() {
+      const today = getTodayDateString()
+      if (lastActiveDateRef.current !== today) {
+        lastActiveDateRef.current = today
+        const newToken = getOrCreateDeviceToken()
+        setDeviceToken(newToken)
+        dispatch({ type: 'clear' })
+        setGuestName('')
+        setIsOrderingSession(Boolean(localStorage.getItem('satuang-customer-token')))
+        fetchOrders(newToken)
+      }
+    }
+
+    const intervalId = setInterval(checkMidnightRollover, 30000)
+    document.addEventListener('visibilitychange', checkMidnightRollover)
+    window.addEventListener('focus', checkMidnightRollover)
+
+    return () => {
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', checkMidnightRollover)
+      window.removeEventListener('focus', checkMidnightRollover)
+    }
+  }, [deviceToken])
+
+  function handleResetGuestSession() {
+    const newToken = forceResetDeviceSession()
+    setDeviceToken(newToken)
+    dispatch({ type: 'clear' })
+    setGuestName('')
+    sessionStorage.removeItem('satuang-ordering-session')
+    setIsOrderingSession(false)
+    setOrders([])
+    setAuthNotice('Sesi perangkat diperbarui. Halaman kembali segar.')
+    moveTo('landing')
   }
 
   // Check existing token on mount and fetch menu + orders
@@ -268,6 +330,44 @@ export function CustomerApp() {
     }
     fetchOrders()
   }, [])
+
+  const triggerSnapPayment = useCallback((snapToken: string) => {
+    if (typeof window !== 'undefined' && window.snap && typeof window.snap.pay === 'function') {
+      window.snap.pay(snapToken, {
+        onSuccess: async () => {
+          setAuthNotice('Pembayaran berhasil diterima! Pesanan sedang disiapkan.')
+          await fetchOrders()
+        },
+        onPending: async () => {
+          setAuthNotice('Menunggu verifikasi pembayaran. Silakan selesaikan transaksi Anda.')
+          await fetchOrders()
+        },
+        onError: async () => {
+          setAuthNotice('Pembayaran gagal diproses atau kedaluwarsa.')
+          await fetchOrders()
+        },
+        onClose: async () => {
+          await fetchOrders()
+        },
+      })
+    } else {
+      setAuthNotice('Jendela pembayaran siap. Silakan klik tombol Bayar Sekarang pada tab pesanan.')
+    }
+  }, [fetchOrders])
+
+  // Polling for active pending online orders
+  useEffect(() => {
+    const hasPendingOnline = orders.some(
+      (o) => o.payment_status === 'MENUNGGU' && (o.payment_method === 'midtrans' || o.payment_method === 'qris' || o.payment_method === 'va')
+    )
+    if (!hasPendingOnline) return
+
+    const timer = setInterval(() => {
+      fetchOrders()
+    }, 4000)
+
+    return () => clearInterval(timer)
+  }, [orders, fetchOrders])
 
   const lines = Object.values(cart)
   const itemCount = lines.reduce((sum, line) => sum + line.quantity, 0)
@@ -311,6 +411,9 @@ export function CustomerApp() {
         setAppliedPromo(result.promo)
         setPromoDiscount(result.discount_amount ?? 0)
         setPromoMessage(result.message)
+        // Aturan Anti-Gabung: matikan poin loyalitas saat promo voucher digunakan
+        setUsePoints(false)
+        setPointsToRedeem(0)
       } else {
         setAppliedPromo(null)
         setPromoDiscount(0)
@@ -332,7 +435,34 @@ export function CustomerApp() {
     setPromoMessage('')
   }
 
-  const finalTotal = Math.max(0, subtotal - promoDiscount)
+  function handleToggleUsePoints(enable: boolean) {
+    if (enable) {
+      // Aturan Anti-Gabung: hapus promo voucher saat poin loyalitas diaktifkan
+      handleRemovePromo()
+      setUsePoints(true)
+      const minPts = loyaltySettings?.min_redemption_points ?? 5
+      const available = member?.points_balance ?? 0
+      if (available >= minPts) {
+        setPointsToRedeem(minPts)
+      } else {
+        setPointsToRedeem(available)
+      }
+    } else {
+      setUsePoints(false)
+      setPointsToRedeem(0)
+    }
+  }
+
+  const pointsDiscount = useMemo(() => {
+    if (!usePoints || !loyaltySettings || !loyaltySettings.is_active || pointsToRedeem <= 0 || !member) {
+      return 0
+    }
+    const nominal = pointsToRedeem * loyaltySettings.point_value_rupiah
+    const maxDiscount = (loyaltySettings.max_discount_percentage / 100) * subtotal
+    return Math.min(nominal, maxDiscount, subtotal)
+  }, [usePoints, loyaltySettings, pointsToRedeem, member, subtotal])
+
+  const finalTotal = Math.max(0, subtotal - promoDiscount - pointsDiscount)
 
   useEffect(() => {
     try {
@@ -513,7 +643,7 @@ export function CustomerApp() {
     setSubmitting(true)
 
     try {
-      await createCashOrder(
+      const res = await createCashOrder(
         {
           customer_name: member ? member.name.trim() : checkoutName.trim(),
           ...(member?.phone
@@ -522,8 +652,9 @@ export function CustomerApp() {
             ? { customer_phone: checkoutPhone.trim() }
             : {}),
           guest_device_token: deviceToken,
-          payment_method: 'cash',
+          payment_method: paymentMethod,
           ...(appliedPromo && promoDiscount > 0 ? { promo_code: appliedPromo.code } : {}),
+          ...(usePoints && pointsToRedeem > 0 ? { points_redeemed: pointsToRedeem } : {}),
           items: lines.map((line) => ({
             ...(line.bundle_id ? { bundle_id: line.bundle_id } : { product_id: line.product_id }),
             quantity: line.quantity,
@@ -535,12 +666,18 @@ export function CustomerApp() {
 
       dispatch({ type: 'clear' })
       handleRemovePromo()
+      setUsePoints(false)
+      setPointsToRedeem(0)
       idempotencyKey.current = crypto.randomUUID()
       setCheckoutName(member?.name ?? '')
       setCheckoutPhone('')
       setCartOpen(false)
       await fetchOrders()
       moveTo('orders')
+
+      if (paymentMethod === 'midtrans' && res.order.snap_token) {
+        triggerSnapPayment(res.order.snap_token)
+      }
     } catch (error) {
       setCheckoutError(
         error instanceof Error ? error.message : 'Pesanan belum dapat dibuat.',
@@ -726,6 +863,8 @@ export function CustomerApp() {
             moveTo={moveTo}
             onCompleteOrder={handleCompleteOrder}
             completingOrderNumber={completingOrderNumber}
+            onResetGuestSession={handleResetGuestSession}
+            onPaySnap={triggerSnapPayment}
           />
         )}
 
@@ -822,6 +961,14 @@ export function CustomerApp() {
         promoMessage={promoMessage}
         onApplyPromo={handleApplyPromo}
         onRemovePromo={handleRemovePromo}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        loyaltySettings={loyaltySettings}
+        usePoints={usePoints}
+        onToggleUsePoints={handleToggleUsePoints}
+        pointsToRedeem={pointsToRedeem}
+        setPointsToRedeem={setPointsToRedeem}
+        pointsDiscount={pointsDiscount}
         onSwitchToMember={() => {
           setCartOpen(false)
           moveTo('login')
