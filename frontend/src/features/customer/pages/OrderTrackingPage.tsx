@@ -167,26 +167,28 @@ export function OrderTrackingPage({
                     <div>
                       <strong>{group.label}</strong>
                       <small>
-                        {group.items.length} item · {group.readyCount}/{group.totalCount} siap
+                        {group.items.length} item{lookupResult.order_status !== 'DIBATALKAN' ? ` · ${group.readyCount}/${group.totalCount} siap` : ''}
                       </small>
                     </div>
                   </div>
-                  <span
-                    className={`customer-prep-status-pill ${
-                      group.status === 'SIAP'
-                        ? 'ready'
+                  {lookupResult.order_status !== 'DIBATALKAN' && (
+                    <span
+                      className={`customer-prep-status-pill ${
+                        group.status === 'SIAP'
+                          ? 'ready'
+                          : group.status === 'DIPROSES'
+                          ? 'processing'
+                          : 'waiting'
+                      }`}
+                    >
+                      <span className="prep-dot" />
+                      {group.status === 'SIAP'
+                        ? 'Siap'
                         : group.status === 'DIPROSES'
-                        ? 'processing'
-                        : 'waiting'
-                    }`}
-                  >
-                    <span className="prep-dot" />
-                    {group.status === 'SIAP'
-                      ? 'Siap'
-                      : group.status === 'DIPROSES'
-                      ? 'Sedang dibuat'
-                      : 'Menunggu'}
-                  </span>
+                        ? 'Sedang dibuat'
+                        : 'Menunggu'}
+                    </span>
+                  )}
                 </div>
 
                 <div className="customer-prep-items">
@@ -203,23 +205,25 @@ export function OrderTrackingPage({
                           )}
                         </div>
                       </div>
-                      <div className="prep-item-meta">
-                        <span
-                          className={`prep-item-chip ${
-                            item.preparation_status === 'SIAP'
-                              ? 'ready'
+                      {lookupResult.order_status !== 'DIBATALKAN' && (
+                        <div className="prep-item-meta">
+                          <span
+                            className={`prep-item-chip ${
+                              item.preparation_status === 'SIAP'
+                                ? 'ready'
+                                : item.preparation_status === 'DIPROSES'
+                                ? 'processing'
+                                : 'waiting'
+                            }`}
+                          >
+                            {item.preparation_status === 'SIAP'
+                              ? 'Siap'
                               : item.preparation_status === 'DIPROSES'
-                              ? 'processing'
-                              : 'waiting'
-                          }`}
-                        >
-                          {item.preparation_status === 'SIAP'
-                            ? 'Siap'
-                            : item.preparation_status === 'DIPROSES'
-                            ? 'Diproses'
-                            : 'Menunggu'}
-                        </span>
-                      </div>
+                              ? 'Diproses'
+                              : 'Menunggu'}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
