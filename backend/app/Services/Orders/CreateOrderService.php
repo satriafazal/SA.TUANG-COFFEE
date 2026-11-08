@@ -3,9 +3,11 @@
 namespace App\Services\Orders;
 
 use App\Models\Bundle;
+use App\Models\Customer;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Promotion;
+use App\Services\Loyalty\LoyaltyService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -18,17 +20,20 @@ class CreateOrderService
             return $existing;
         }
 
-        if ($data['payment_method'] !== 'cash') {
+        if (!in_array($data['payment_method'], ['cash', 'midtrans', 'qris', 'va'])) {
             throw ValidationException::withMessages([
-                'payment_method' => 'Pembayaran VA/QRIS belum dapat digunakan karena payment gateway belum dikonfigurasi.',
+                'payment_method' => 'Metode pembayaran tidak didukung.',
             ]);
         }
 
         if (!empty($data['guest_device_token'])) {
+            Order::expirePendingOrders();
+
             $activePending = Order::query()
                 ->where('guest_device_token', $data['guest_device_token'])
                 ->where('order_status', 'MENUNGGU_PEMBAYARAN')
                 ->where('payment_status', 'MENUNGGU')
+                ->whereDate('created_at', today())
                 ->where(function ($q) {
                     $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
                 })
@@ -139,9 +144,19 @@ class CreateOrderService
 
             $subtotal = $this->fromCents($subtotalCents);
             $discountCents = 0;
+            $pointsDiscountCents = 0;
             $pricingSnapshot = ['currency' => 'IDR', 'discounts' => []];
 
-            if (!empty($data['promo_code'])) {
+            $pointsRedeemed = isset($data['points_redeemed']) ? (int) $data['points_redeemed'] : 0;
+            $hasPromo = !empty($data['promo_code']);
+
+            if ($hasPromo && $pointsRedeemed > 0) {
+                throw ValidationException::withMessages([
+                    'points_redeemed' => 'Poin loyalitas dan voucher promo tidak dapat digabungkan dalam satu pesanan.',
+                ]);
+            }
+
+            if ($hasPromo) {
                 $code = Str::upper(trim($data['promo_code']));
                 /** @var Promotion|null $promo */
                 $promo = Promotion::query()->where('code', $code)->where('is_active', true)->first();
@@ -195,10 +210,58 @@ class CreateOrderService
                         ],
                     ],
                 ];
+            } elseif ($pointsRedeemed > 0) {
+                $customerId = $data['customer_id'] ?? null;
+                if (!$customerId) {
+                    throw ValidationException::withMessages([
+                        'points_redeemed' => 'Penukaran poin loyalitas hanya dapat digunakan oleh member yang telah login.',
+                    ]);
+                }
+
+                /** @var Customer|null $customer */
+                $customer = Customer::query()->where('id', $customerId)->lockForUpdate()->first();
+                if (!$customer) {
+                    throw ValidationException::withMessages([
+                        'points_redeemed' => 'Data akun member tidak ditemukan.',
+                    ]);
+                }
+
+                if ($customer->points_balance < $pointsRedeemed) {
+                    throw ValidationException::withMessages([
+                        'points_redeemed' => "Poin Anda tidak mencukupi (saldo poin: {$customer->points_balance}, ditukarkan: {$pointsRedeemed}).",
+                    ]);
+                }
+
+                /** @var LoyaltyService $loyaltyService */
+                $loyaltyService = app(LoyaltyService::class);
+                $redemption = $loyaltyService->calculateRedemptionDiscount($pointsRedeemed, (float) $subtotal);
+
+                $pointsDiscountCents = $this->toCents((string) $redemption['discount_amount']);
+                $pointsDiscountCents = min($pointsDiscountCents, $subtotalCents);
+                $pointsDiscountFormatted = $this->fromCents($pointsDiscountCents);
+
+                $customer->decrement('points_balance', $pointsRedeemed);
+
+                $pricingSnapshot = [
+                    'currency' => 'IDR',
+                    'loyalty' => [
+                        'points_redeemed' => $pointsRedeemed,
+                        'point_value_rupiah' => $redemption['point_value_rupiah'],
+                        'discount_amount' => $pointsDiscountFormatted,
+                    ],
+                    'discounts' => [
+                        [
+                            'type' => 'loyalty_points',
+                            'points' => $pointsRedeemed,
+                            'amount' => $pointsDiscountFormatted,
+                        ],
+                    ],
+                ];
             }
 
             $discountTotal = $this->fromCents($discountCents);
-            $totalCents = max(0, $subtotalCents - $discountCents);
+            $pointsDiscount = $this->fromCents($pointsDiscountCents);
+            $totalCents = max(0, $subtotalCents - $discountCents - $pointsDiscountCents);
             $total = $this->fromCents($totalCents);
 
             $order = Order::create([
@@ -214,12 +277,12 @@ class CreateOrderService
                 'payment_method' => $data['payment_method'],
                 'subtotal' => $subtotal,
                 'discount_total' => $discountTotal,
-                'points_discount' => '0.00',
+                'points_discount' => $pointsDiscount,
                 'total' => $total,
-                'points_redeemed' => 0,
+                'points_redeemed' => $pointsRedeemed,
                 'pricing_snapshot' => $pricingSnapshot,
                 'idempotency_key' => $idempotencyKey,
-                'expires_at' => now()->addMinutes(10),
+                'expires_at' => in_array($data['payment_method'], ['midtrans', 'qris', 'va']) ? now()->addMinutes(15) : now()->addMinutes(10),
             ]);
 
             foreach ($preparedItems as $item) {
@@ -236,16 +299,27 @@ class CreateOrderService
                 ]);
             }
 
+            $isOnline = in_array($data['payment_method'], ['midtrans', 'qris', 'va']);
+            $snapData = null;
+            if ($isOnline) {
+                $order->load('items');
+                $snapService = app(\App\Services\Payments\MidtransSnapService::class);
+                $snapData = $snapService->createSnapTransaction($order);
+            }
+
             $order->payments()->create([
-                'method' => 'cash',
+                'method' => $data['payment_method'],
                 'status' => 'MENUNGGU',
                 'amount' => $total,
+                'provider' => $isOnline ? 'midtrans' : null,
+                'provider_reference' => $snapData['token'] ?? null,
+                'provider_metadata' => $snapData,
             ]);
 
             $order->statusHistory()->create([
                 'from_status' => null,
                 'to_status' => 'MENUNGGU_PEMBAYARAN',
-                'reason' => 'Pesanan dibuat oleh pelanggan.',
+                'reason' => $isOnline ? 'Pesanan dibuat. Menunggu pembayaran online.' : 'Pesanan dibuat oleh pelanggan.',
             ]);
 
             return $order->load(['items', 'payments']);

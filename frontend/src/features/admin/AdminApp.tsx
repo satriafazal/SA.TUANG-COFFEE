@@ -16,6 +16,7 @@ import {
   getAdminBundles,
   getAdminCategories,
   getAdminDashboard,
+  getAdminLoyaltySettings,
   getAdminOrders,
   getAdminProducts,
   getAdminPromotions,
@@ -27,6 +28,7 @@ import {
   updateAdminBanner,
   updateAdminBundle,
   updateAdminCategory,
+  updateAdminLoyaltySettings,
   updateAdminProduct,
   updateAdminPromotion,
   updateAdminStaff,
@@ -46,13 +48,15 @@ import {
   type AdminPromotionInput,
   type AdminStaffInput,
   type AdminStaffUser,
+  type LoyaltySettings,
   type StaffOrder,
   type StaffUser,
 } from '../../api'
+import { AdminPagination } from './components/AdminPagination'
 import { ImageAdjustModal } from './components/ImageAdjustModal'
 import '../../styles/admin.css'
 
-type AdminPage = 'dashboard' | 'products' | 'categories' | 'bundles' | 'promotions' | 'banners' | 'orders' | 'staff' | 'audit-logs'
+type AdminPage = 'dashboard' | 'products' | 'categories' | 'bundles' | 'promotions' | 'banners' | 'orders' | 'staff' | 'audit-logs' | 'loyalty'
 type ProductDraft = Omit<AdminProductInput, 'price' | 'category_id' | 'description' | 'image_path'> & { price: string; category_id: string; description: string; image_path: string }
 type CategoryDraft = { is_parent: boolean; parent_id: string; name: string; item_type: 'drink' | 'food'; description: string; sort_order: number; is_active: boolean }
 type BundleDraft = {
@@ -73,6 +77,8 @@ type PromotionDraft = {
   min_spend: string
   max_discount: string
   is_active: boolean
+  starts_at: string
+  ends_at: string
 }
 type BannerDraft = {
   title: string
@@ -88,6 +94,13 @@ type StaffDraft = {
   password: string
   role: 'admin' | 'cashier'
   is_active: boolean
+}
+type LoyaltyDraft = {
+  is_active: boolean
+  earning_threshold: string
+  point_value_rupiah: string
+  min_redemption_points: string
+  max_discount_percentage: string
 }
 
 const storedToken = typeof window !== 'undefined' && Boolean(window.localStorage.getItem('satuang-token'))
@@ -106,9 +119,10 @@ const itemNames: Record<AdminItemType, string> = { food: 'Makanan', drink: 'Minu
 const blankProduct = (): ProductDraft => ({ category_id: '', name: '', description: '', item_type: 'drink', price: '', image_path: '', allow_notes: false, is_available: true, is_active: true })
 const blankCategory = (asParent = false, defaultParentId = ''): CategoryDraft => ({ is_parent: asParent, parent_id: defaultParentId, name: '', item_type: 'drink', description: '', sort_order: 0, is_active: true })
 const blankBundle = (): BundleDraft => ({ category_id: '', name: '', description: '', price: '', image_path: '', is_active: true, components: [] })
-const blankPromotion = (): PromotionDraft => ({ code: '', name: '', description: '', discount_type: 'percent', discount_value: '10', min_spend: '0', max_discount: '', is_active: true })
+const blankPromotion = (): PromotionDraft => ({ code: '', name: '', description: '', discount_type: 'percent', discount_value: '10', min_spend: '0', max_discount: '', is_active: true, starts_at: '', ends_at: '' })
 const blankBanner = (): BannerDraft => ({ title: '', subtitle: '', image_path: '', link_url: '', sort_order: '0', is_active: true })
 const blankStaff = (): StaffDraft => ({ name: '', email: '', password: '', role: 'cashier', is_active: true })
+const blankLoyalty = (): LoyaltyDraft => ({ is_active: true, earning_threshold: '10000', point_value_rupiah: '500', min_redemption_points: '5', max_discount_percentage: '50' })
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : 'Permintaan belum dapat diproses. Silakan coba lagi.'
@@ -166,6 +180,40 @@ export default function AdminApp() {
   const [selectedOrder, setSelectedOrder] = useState<StaffOrder | null>(null)
   const [selectedAuditLog, setSelectedAuditLog] = useState<AdminAuditLog | null>(null)
 
+  // Loyalty Settings
+  const [loyaltyDraft, setLoyaltyDraft] = useState<LoyaltyDraft>(blankLoyalty)
+  const [savingLoyalty, setSavingLoyalty] = useState(false)
+
+  // Table Pagination States
+  const [productPage, setProductPage] = useState(1)
+  const [productPageSize, setProductPageSize] = useState(10)
+
+  const [categoryPage, setCategoryPage] = useState(1)
+  const [categoryPageSize, setCategoryPageSize] = useState(10)
+
+  const [bundlePage, setBundlePage] = useState(1)
+  const [bundlePageSize, setBundlePageSize] = useState(10)
+
+  const [promotionPage, setPromotionPage] = useState(1)
+  const [promotionPageSize, setPromotionPageSize] = useState(10)
+
+  const [orderPage, setOrderPage] = useState(1)
+  const [orderPageSize, setOrderPageSize] = useState(20)
+
+  const [staffPage, setStaffPage] = useState(1)
+  const [staffPageSize, setStaffPageSize] = useState(10)
+
+  const [auditLogPage, setAuditLogPage] = useState(1)
+  const [auditLogPageSize, setAuditLogPageSize] = useState(20)
+
+  const [bannerPage, setBannerPage] = useState(1)
+  const [bannerPageSize, setBannerPageSize] = useState(10)
+
+  useEffect(() => {
+    setProductPage(1)
+    setOrderPage(1)
+  }, [search, categoryFilter, orderStatusFilter])
+
   const refreshData = useCallback(async () => {
     setLoading(true)
     setError('')
@@ -178,6 +226,7 @@ export default function AdminApp() {
         nextPromos,
         nextBanners,
         nextStaff,
+        nextLoyalty,
       ] = await Promise.all([
         getAdminDashboard(),
         getAdminCategories(),
@@ -186,6 +235,15 @@ export default function AdminApp() {
         getAdminPromotions(),
         getAdminBanners(),
         getAdminStaff(),
+        getAdminLoyaltySettings().catch(() => ({
+          settings: {
+            is_active: true,
+            earning_threshold: 10000,
+            point_value_rupiah: 500,
+            min_redemption_points: 5,
+            max_discount_percentage: 50,
+          },
+        })),
       ])
       setDashboard(nextDashboard)
       setCategories(nextCategories.categories)
@@ -194,6 +252,15 @@ export default function AdminApp() {
       setPromotions(nextPromos.promotions)
       setBanners(nextBanners.banners)
       setStaffList(nextStaff.staff)
+      if (nextLoyalty?.settings) {
+        setLoyaltyDraft({
+          is_active: nextLoyalty.settings.is_active,
+          earning_threshold: String(nextLoyalty.settings.earning_threshold),
+          point_value_rupiah: String(nextLoyalty.settings.point_value_rupiah),
+          min_redemption_points: String(nextLoyalty.settings.min_redemption_points),
+          max_discount_percentage: String(nextLoyalty.settings.max_discount_percentage),
+        })
+      }
 
       // Fetch on-demand or background based on page
       if (page === 'orders') {
@@ -247,6 +314,19 @@ export default function AdminApp() {
     if (nextPage === 'staff') getAdminStaff().then((res) => setStaffList(res.staff)).catch(() => {})
     if (nextPage === 'orders') getAdminOrders('', '').then((res) => setOrders(res.orders)).catch(() => {})
     if (nextPage === 'audit-logs') getAdminAuditLogs().then((res) => setAuditLogs(res.audit_logs)).catch(() => {})
+    if (nextPage === 'loyalty') {
+      getAdminLoyaltySettings()
+        .then((res) => {
+          setLoyaltyDraft({
+            is_active: res.settings.is_active,
+            earning_threshold: String(res.settings.earning_threshold),
+            point_value_rupiah: String(res.settings.point_value_rupiah),
+            min_redemption_points: String(res.settings.min_redemption_points),
+            max_discount_percentage: String(res.settings.max_discount_percentage),
+          })
+        })
+        .catch(() => {})
+    }
   }, [])
 
   const filteredProducts = useMemo(() => {
@@ -258,6 +338,30 @@ export default function AdminApp() {
     })
   }, [products, search, categoryFilter])
 
+  const paginatedProducts = useMemo(
+    () => filteredProducts.slice((productPage - 1) * productPageSize, productPage * productPageSize),
+    [filteredProducts, productPage, productPageSize]
+  )
+
+  const parentCategories = useMemo(
+    () => categories.filter((c) => !c.parent_id),
+    [categories]
+  )
+  const paginatedParentCategories = useMemo(
+    () => parentCategories.slice((categoryPage - 1) * categoryPageSize, categoryPage * categoryPageSize),
+    [parentCategories, categoryPage, categoryPageSize]
+  )
+
+  const paginatedBundles = useMemo(
+    () => bundles.slice((bundlePage - 1) * bundlePageSize, bundlePage * bundlePageSize),
+    [bundles, bundlePage, bundlePageSize]
+  )
+
+  const paginatedPromotions = useMemo(
+    () => promotions.slice((promotionPage - 1) * promotionPageSize, promotionPage * promotionPageSize),
+    [promotions, promotionPage, promotionPageSize]
+  )
+
   const filteredOrders = useMemo(() => {
     const term = search.trim().toLocaleLowerCase('id-ID')
     return orders.filter((order) => {
@@ -266,6 +370,26 @@ export default function AdminApp() {
       return matchesText && matchesStatus
     })
   }, [orders, search, orderStatusFilter])
+
+  const paginatedOrders = useMemo(
+    () => filteredOrders.slice((orderPage - 1) * orderPageSize, orderPage * orderPageSize),
+    [filteredOrders, orderPage, orderPageSize]
+  )
+
+  const paginatedStaff = useMemo(
+    () => staffList.slice((staffPage - 1) * staffPageSize, staffPage * staffPageSize),
+    [staffList, staffPage, staffPageSize]
+  )
+
+  const paginatedAuditLogs = useMemo(
+    () => auditLogs.slice((auditLogPage - 1) * auditLogPageSize, auditLogPage * auditLogPageSize),
+    [auditLogs, auditLogPage, auditLogPageSize]
+  )
+
+  const paginatedBanners = useMemo(
+    () => banners.slice((bannerPage - 1) * bannerPageSize, bannerPage * bannerPageSize),
+    [banners, bannerPage, bannerPageSize]
+  )
 
   const pageHeaders: Record<AdminPage, { title: string; kicker: string; description: string }> = {
     dashboard: { title: 'Ringkasan', kicker: 'DASHBOARD OUTLET', description: 'Pantau kondisi katalog, pesanan, dan operasional SA.TUANG COFFEE.' },
@@ -277,6 +401,7 @@ export default function AdminApp() {
     orders: { title: 'Semua Pesanan', kicker: 'OPERASIONAL PESANAN', description: 'Daftar riwayat dan monitor seluruh pesanan yang masuk.' },
     staff: { title: 'Kelola Staf', kicker: 'MANAJEMEN PENGGUNA', description: 'Kelola akun kasir dan administrator yang memiliki akses sistem.' },
     'audit-logs': { title: 'Log Aktivitas', kicker: 'KEAMANAN & AUDIT', description: 'Rekam jejak mutasi data sensitif dan aksi administratif.' },
+    loyalty: { title: 'Skema Loyalitas Poin', kicker: 'LOYALITAS PELANGGAN', description: 'Atur perolehan poin belanja, nilai tukar diskon, minimal penukaran, dan batas maksimal potongan.' },
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -641,6 +766,8 @@ export default function AdminApp() {
             min_spend: String(Number(promo.min_spend)),
             max_discount: promo.max_discount ? String(Number(promo.max_discount)) : '',
             is_active: promo.is_active,
+            starts_at: promo.starts_at ? promo.starts_at.slice(0, 16) : '',
+            ends_at: promo.ends_at ? promo.ends_at.slice(0, 16) : '',
           }
         : blankPromotion(),
     )
@@ -661,8 +788,8 @@ export default function AdminApp() {
       min_spend: Number(promotionDraft.min_spend) || 0,
       max_discount: promotionDraft.discount_type === 'fixed' ? null : (promotionDraft.max_discount ? Number(promotionDraft.max_discount) : null),
       is_active: promotionDraft.is_active,
-      starts_at: null,
-      ends_at: null,
+      starts_at: promotionDraft.starts_at ? new Date(promotionDraft.starts_at).toISOString() : null,
+      ends_at: promotionDraft.ends_at ? new Date(promotionDraft.ends_at).toISOString() : null,
     }
     try {
       if (promotionEditor) await updateAdminPromotion(promotionEditor.id, input)
@@ -676,6 +803,62 @@ export default function AdminApp() {
       setError(errorText(saveError))
     } finally {
       setBusyId(null)
+    }
+  }
+
+  async function handleSaveLoyalty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setError('')
+    setNotice('')
+
+    const threshold = Number(loyaltyDraft.earning_threshold)
+    const pointValue = Number(loyaltyDraft.point_value_rupiah)
+    const minRedemption = Number(loyaltyDraft.min_redemption_points)
+    const maxDiscount = Number(loyaltyDraft.max_discount_percentage)
+
+    if (isNaN(threshold) || threshold < 1000) {
+      setError('Ambang belanja minimal adalah Rp 1.000 per 1 poin.')
+      return
+    }
+    if (isNaN(pointValue) || pointValue < 1) {
+      setError('Nilai tukar per 1 poin minimal Rp 1.')
+      return
+    }
+    if (pointValue >= threshold) {
+      setError(`Nilai tukar 1 poin (${currency(pointValue)}) tidak boleh sama atau melebihi ambang belanja (${currency(threshold)}) demi melindungi margin kafe agar tidak rugi/kecolongan.`)
+      return
+    }
+    if (isNaN(minRedemption) || minRedemption < 1) {
+      setError('Minimal penukaran poin adalah 1 poin.')
+      return
+    }
+    if (isNaN(maxDiscount) || maxDiscount < 1 || maxDiscount > 100) {
+      setError('Maksimal diskon poin harus antara 1% sampai 100%.')
+      return
+    }
+
+    setSavingLoyalty(true)
+    try {
+      const payload: LoyaltySettings = {
+        is_active: loyaltyDraft.is_active,
+        earning_threshold: threshold,
+        point_value_rupiah: pointValue,
+        min_redemption_points: minRedemption,
+        max_discount_percentage: maxDiscount,
+      }
+      const res = await updateAdminLoyaltySettings(payload)
+      setLoyaltyDraft({
+        is_active: res.settings.is_active,
+        earning_threshold: String(res.settings.earning_threshold),
+        point_value_rupiah: String(res.settings.point_value_rupiah),
+        min_redemption_points: String(res.settings.min_redemption_points),
+        max_discount_percentage: String(res.settings.max_discount_percentage),
+      })
+      setNotice(res.message || 'Pengaturan skema loyalitas berhasil diperbarui.')
+    } catch (err) {
+      setError(errorText(err))
+    } finally {
+      setSavingLoyalty(false)
     }
   }
 
@@ -971,6 +1154,9 @@ export default function AdminApp() {
           <button className={page === 'promotions' ? 'active' : ''} onClick={() => navigateTo('promotions')}>
             <span>%</span>Promo & Voucher <small>{promotions.length}</small>
           </button>
+          <button className={page === 'loyalty' ? 'active' : ''} onClick={() => navigateTo('loyalty')}>
+            <span>★</span>Loyalitas & Poin
+          </button>
           <button className={page === 'banners' ? 'active' : ''} onClick={() => navigateTo('banners')}>
             <span>▤</span>Banner & Info <small>{banners.length}</small>
           </button>
@@ -1011,7 +1197,7 @@ export default function AdminApp() {
             {page === 'promotions' && <button className="admin-button primary" onClick={() => openPromotionEditor()}>＋ Tambah promo</button>}
             {page === 'banners' && <button className="admin-button primary" onClick={() => openBannerEditor()}>＋ Tambah banner</button>}
             {page === 'staff' && <button className="admin-button primary" onClick={() => openStaffEditor()}>＋ Tambah akun staf</button>}
-            {(page === 'dashboard' || page === 'orders' || page === 'audit-logs') && (
+            {(page === 'dashboard' || page === 'orders' || page === 'audit-logs' || page === 'loyalty') && (
               <button className="admin-button quiet" onClick={() => void refreshData()} disabled={loading}>
                 ↻ Perbarui data
               </button>
@@ -1163,7 +1349,7 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredProducts.map((p) => (
+                    {paginatedProducts.map((p) => (
                       <tr key={p.id}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1247,6 +1433,13 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={productPage}
+                totalItems={filteredProducts.length}
+                pageSize={productPageSize}
+                onPageChange={setProductPage}
+                onPageSizeChange={setProductPageSize}
+              />
             </section>
           )}
 
@@ -1274,9 +1467,7 @@ export default function AdminApp() {
                   </thead>
                   <tbody>
                     {/* 1. Tampilkan Kategori Induk beserta Sub-Kategorinya */}
-                    {categories
-                      .filter((c) => !c.parent_id)
-                      .map((parent) => {
+                    {paginatedParentCategories.map((parent) => {
                         const children = categories.filter((sub) => sub.parent_id === parent.id)
                         return (
                           <Fragment key={`parent-group-${parent.id}`}>
@@ -1385,6 +1576,13 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={categoryPage}
+                totalItems={parentCategories.length}
+                pageSize={categoryPageSize}
+                onPageChange={setCategoryPage}
+                onPageSizeChange={setCategoryPageSize}
+              />
             </section>
           )}
 
@@ -1410,7 +1608,7 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {bundles.map((b) => (
+                    {paginatedBundles.map((b) => (
                       <tr key={b.id}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -1418,7 +1616,17 @@ export default function AdminApp() {
                               <img
                                 src={b.image_path}
                                 alt={b.name}
-                                style={{ width: '44px', height: '33px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #111', flexShrink: 0 }}
+                                style={{
+                                  width: '48px',
+                                  height: '36px',
+                                  aspectRatio: '4 / 3',
+                                  objectFit: 'cover',
+                                  border: '1.5px solid #0c0d0e',
+                                  borderRadius: '2px',
+                                  background: '#f0f0ea',
+                                  boxShadow: '1.5px 1.5px 0 #0c0d0e',
+                                  flexShrink: 0,
+                                }}
                               />
                             ) : null}
                             <div>
@@ -1460,6 +1668,13 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={bundlePage}
+                totalItems={bundles.length}
+                pageSize={bundlePageSize}
+                onPageChange={setBundlePage}
+                onPageSizeChange={setBundlePageSize}
+              />
             </section>
           )}
 
@@ -1478,6 +1693,7 @@ export default function AdminApp() {
                     <tr>
                       <th>KODE</th>
                       <th>NAMA PROMO</th>
+                      <th>MASA BERLAKU</th>
                       <th>POTONGAN</th>
                       <th>MIN. BELANJA</th>
                       <th>STATUS</th>
@@ -1485,12 +1701,53 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {promotions.map((pr) => (
+                    {paginatedPromotions.map((pr) => (
                       <tr key={pr.id}>
                         <td><strong><code>{pr.code}</code></strong></td>
                         <td>
                           <strong>{pr.name}</strong>
                           <small className="admin-subline">{pr.description || '—'}</small>
+                        </td>
+                        <td>
+                          {(() => {
+                            const now = new Date()
+                            const start = pr.starts_at ? new Date(pr.starts_at) : null
+                            const end = pr.ends_at ? new Date(pr.ends_at) : null
+                            const isExpired = end && end < now
+                            const isUpcoming = start && start > now
+
+                            if (isExpired) {
+                              return (
+                                <div>
+                                  <span className="admin-status bad">Kedaluwarsa</span>
+                                  <small className="admin-subline">
+                                    Berakhir {end.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                                  </small>
+                                </div>
+                              )
+                            }
+                            if (isUpcoming) {
+                              return (
+                                <div>
+                                  <span className="admin-status warning">Akan Datang</span>
+                                  <small className="admin-subline">
+                                    Mulai {start ? start.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : ''}
+                                  </small>
+                                </div>
+                              )
+                            }
+                            if (start || end) {
+                              return (
+                                <div>
+                                  <span className="admin-status good">Berlaku</span>
+                                  <small className="admin-subline">
+                                    s/d {end ? end.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Seterusnya'}
+                                  </small>
+                                </div>
+                              )
+                            }
+                            return <span className="admin-subline">Selamanya</span>
+                          })()}
                         </td>
                         <td>
                           <strong>{pr.discount_type === 'percent' ? `${pr.discount_value}%` : currency(pr.discount_value)}</strong>
@@ -1509,11 +1766,18 @@ export default function AdminApp() {
                       </tr>
                     ))}
                     {!promotions.length && (
-                      <tr><td colSpan={6} className="admin-empty-cell">Belum ada kode promo. Klik tombol “＋ Tambah promo” untuk membuat promo baru.</td></tr>
+                      <tr><td colSpan={7} className="admin-empty-cell">Belum ada kode promo. Klik tombol “＋ Tambah promo” untuk membuat promo baru.</td></tr>
                     )}
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={promotionPage}
+                totalItems={promotions.length}
+                pageSize={promotionPageSize}
+                onPageChange={setPromotionPage}
+                onPageSizeChange={setPromotionPageSize}
+              />
             </section>
           )}
 
@@ -1538,7 +1802,7 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {banners.map((bn) => (
+                    {paginatedBanners.map((bn) => (
                       <tr key={bn.id}>
                         <td><strong>#{bn.sort_order}</strong></td>
                         <td>
@@ -1566,6 +1830,211 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={bannerPage}
+                totalItems={banners.length}
+                pageSize={bannerPageSize}
+                onPageChange={setBannerPage}
+                onPageSizeChange={setBannerPageSize}
+              />
+            </section>
+          )}
+
+          {/* LOYALITAS & POIN */}
+          {page === 'loyalty' && (
+            <section className="admin-panel">
+              <div className="admin-panel-head">
+                <div>
+                  <h2>Skema Poin Loyalitas Member</h2>
+                  <p>Atur aturan perolehan poin saat transaksi selesai dan ketentuan penukaran diskon.</p>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              <div style={{
+                padding: '14px 18px',
+                borderBottom: '1px solid #ecece7',
+                background: loyaltyDraft.is_active ? '#fafaf8' : '#fcfaf9',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: '12px',
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className={`admin-status ${loyaltyDraft.is_active ? 'good' : 'muted'}`}>
+                      {loyaltyDraft.is_active ? 'Program Aktif' : 'Program Nonaktif'}
+                    </span>
+                    <strong style={{ fontSize: '12px', color: '#202421' }}>
+                      {loyaltyDraft.is_active
+                        ? 'Poin otomatis dihitung dan dapat ditukarkan member'
+                        : 'Perolehan dan penukaran poin saat ini dinonaktifkan'}
+                    </strong>
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#777b73', lineHeight: 1.5 }}>
+                    {loyaltyDraft.is_active
+                      ? 'Member otomatis mendapatkan poin dari setiap pesanan yang lunas dan dapat menggunakan poin untuk diskon dari web checkout.'
+                      : 'Transaksi baru tidak akan menghasilkan atau menggunakan poin hingga program diaktifkan kembali.'}
+                  </p>
+                </div>
+                <label className="admin-checkbox-single">
+                  <input
+                    type="checkbox"
+                    checked={loyaltyDraft.is_active}
+                    onChange={(e) => setLoyaltyDraft({ ...loyaltyDraft, is_active: e.target.checked })}
+                  />
+                  Aktifkan Program Loyalitas
+                </label>
+              </div>
+
+              <form className="admin-form" onSubmit={handleSaveLoyalty} style={{ padding: '18px' }}>
+                <div className="admin-form-row">
+                  <label>
+                    Ambang Belanja per 1 Poin (Rp)
+                    <input
+                      type="number"
+                      min="1000"
+                      max="1000000"
+                      step="1"
+                      required
+                      value={loyaltyDraft.earning_threshold}
+                      onChange={(e) => setLoyaltyDraft({ ...loyaltyDraft, earning_threshold: e.target.value })}
+                    />
+                    <small className="admin-field-tip">Setiap kelipatan nominal belanja ini menghasilkan 1 poin member. (Default: Rp 10.000, Min: Rp 1.000)</small>
+                  </label>
+                  <label>
+                    Nilai Tukar per 1 Poin (Rp)
+                    <input
+                      type="number"
+                      min="1"
+                      max="100000"
+                      step="1"
+                      required
+                      value={loyaltyDraft.point_value_rupiah}
+                      onChange={(e) => setLoyaltyDraft({ ...loyaltyDraft, point_value_rupiah: e.target.value })}
+                    />
+                    <small className="admin-field-tip">Nilai potongan rupiah tiap 1 poin ditukarkan. Tidak boleh ≥ ambang belanja. (Default: Rp 500)</small>
+                  </label>
+                </div>
+
+                <div className="admin-form-row">
+                  <label>
+                    Minimal Penukaran Poin
+                    <input
+                      type="number"
+                      min="1"
+                      max="1000"
+                      step="1"
+                      required
+                      value={loyaltyDraft.min_redemption_points}
+                      onChange={(e) => setLoyaltyDraft({ ...loyaltyDraft, min_redemption_points: e.target.value })}
+                    />
+                    <small className="admin-field-tip">Batas minimum saldo poin sebelum member diizinkan menukar poin. (Default: 5 poin, Min: 1)</small>
+                  </label>
+                  <label>
+                    Maksimal Diskon Poin (%)
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      step="1"
+                      required
+                      value={loyaltyDraft.max_discount_percentage}
+                      onChange={(e) => setLoyaltyDraft({ ...loyaltyDraft, max_discount_percentage: e.target.value })}
+                    />
+                    <small className="admin-field-tip">Batas maksimal persentase diskon poin dari subtotal pesanan (1–100%). (Default: 50%)</small>
+                  </label>
+                </div>
+
+                {(() => {
+                  const earningThresholdNum = Math.max(1, Number(loyaltyDraft.earning_threshold) || 10000)
+                  const pointValueNum = Math.max(0, Number(loyaltyDraft.point_value_rupiah) || 500)
+                  const maxDiscountPct = Math.min(100, Math.max(0, Number(loyaltyDraft.max_discount_percentage) || 50))
+                  const cashbackRate = earningThresholdNum > 0 ? (pointValueNum / earningThresholdNum) * 100 : 0
+                  const isFinancialLoss = pointValueNum >= earningThresholdNum
+                  const isHighCashback = !isFinancialLoss && cashbackRate > 20
+
+                  return (
+                    <div style={{ background: '#fafaf8', border: '1px solid #ecece7', padding: '14px 16px', display: 'grid', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                        <strong style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.07em', color: '#5d625a' }}>
+                          Simulasi & Ketentuan Finansial Outlet
+                        </strong>
+                        <span className={`admin-status ${isFinancialLoss ? 'bad' : isHighCashback ? 'warning' : 'good'}`}>
+                          {isFinancialLoss ? '⛔ Berpotensi Rugi' : isHighCashback ? '⚠️ Rasio Cashback Tinggi' : '✓ Rasio Aman'} ({cashbackRate.toFixed(1)}% Cashback)
+                        </span>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px', marginTop: '2px' }}>
+                        <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e3e4dc' }}>
+                          <small style={{ color: '#777b73', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Perolehan Poin</small>
+                          <p style={{ margin: '3px 0 0', fontSize: '12px', fontWeight: 700, color: '#202421' }}>
+                            Rp 50.000 = {Math.floor(50000 / earningThresholdNum)} Poin
+                          </p>
+                        </div>
+                        <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e3e4dc' }}>
+                          <small style={{ color: '#777b73', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Nilai Tukar 10 Poin</small>
+                          <p style={{ margin: '3px 0 0', fontSize: '12px', fontWeight: 700, color: '#202421' }}>
+                            Potongan {currency(10 * pointValueNum)}
+                          </p>
+                        </div>
+                        <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e3e4dc' }}>
+                          <small style={{ color: '#777b73', fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Maks. Diskon (Order Rp 40k)</small>
+                          <p style={{ margin: '3px 0 0', fontSize: '12px', fontWeight: 700, color: '#202421' }}>
+                            Maks. {currency((maxDiscountPct / 100) * 40000)} ({maxDiscountPct}%)
+                          </p>
+                        </div>
+                      </div>
+
+                      {isFinancialLoss && (
+                        <div style={{ padding: '8px 12px', background: '#fdf2f2', border: '1px solid #f7d4d4', color: '#b91c1c', fontSize: '11px', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                          <span>⛔</span>
+                          <div>
+                            <strong>Peringatan Proteksi Margin:</strong> Nilai tukar 1 poin ({currency(pointValueNum)}) sama atau lebih besar dari belanja per 1 poin ({currency(earningThresholdNum)}). Skema ini berpotensi merugikan kafe dan diblokir oleh sistem.
+                          </div>
+                        </div>
+                      )}
+
+                      {isHighCashback && (
+                        <div style={{ padding: '8px 12px', background: '#fffbeb', border: '1px solid #fef3c7', color: '#b45309', fontSize: '11px', display: 'flex', gap: '8px', alignItems: 'flex-start' }}>
+                          <span>⚠️</span>
+                          <div>
+                            <strong>Perhatian Margin:</strong> Rasio cashback sebesar {cashbackRate.toFixed(1)}% tergolong tinggi untuk standar F&B kafe (rekomendasi wajar: 2% – 10%). Pastikan margin menu mencukupi agar tidak kecolongan.
+                          </div>
+                        </div>
+                      )}
+
+                      <p style={{ margin: '4px 0 0', fontSize: '11px', color: '#777b73', lineHeight: 1.45 }}>
+                        <strong style={{ color: '#c96738' }}>Aturan Finansial Anti-Gabung:</strong> Pelanggan tidak dapat menggabungkan voucher kode promo dengan penukaran poin loyalitas dalam satu transaksi yang sama untuk melindungi margin keuangan kafe.
+                      </p>
+                    </div>
+                  )
+                })()}
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', paddingTop: '14px', borderTop: '1px solid #ecece7' }}>
+                  <button
+                    type="button"
+                    className="admin-button quiet"
+                    disabled={savingLoyalty}
+                    onClick={() => {
+                      setLoyaltyDraft(blankLoyalty())
+                    }}
+                  >
+                    Reset nilai default
+                  </button>
+                  <button
+                    type="submit"
+                    className="admin-button primary"
+                    disabled={savingLoyalty || (Number(loyaltyDraft.point_value_rupiah) >= Number(loyaltyDraft.earning_threshold) && Number(loyaltyDraft.earning_threshold) > 0)}
+                  >
+                    {savingLoyalty
+                      ? 'Menyimpan…'
+                      : Number(loyaltyDraft.point_value_rupiah) >= Number(loyaltyDraft.earning_threshold) && Number(loyaltyDraft.earning_threshold) > 0
+                        ? 'Nilai tukar melebihi ambang belanja'
+                        : 'Simpan pengaturan skema'}
+                  </button>
+                </div>
+              </form>
             </section>
           )}
 
@@ -1606,7 +2075,7 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredOrders.map((o) => (
+                    {paginatedOrders.map((o) => (
                       <tr key={o.id} style={{ cursor: 'pointer' }} onClick={() => setSelectedOrder(o)} title="Klik untuk rincian pesanan">
                         <td><strong>{o.order_number}</strong></td>
                         <td>
@@ -1642,6 +2111,13 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={orderPage}
+                totalItems={filteredOrders.length}
+                pageSize={orderPageSize}
+                onPageChange={setOrderPage}
+                onPageSizeChange={setOrderPageSize}
+              />
             </section>
           )}
 
@@ -1667,7 +2143,7 @@ export default function AdminApp() {
                     </tr>
                   </thead>
                   <tbody>
-                    {staffList.map((st) => (
+                    {paginatedStaff.map((st) => (
                       <tr key={st.id}>
                         <td>
                           <strong>{st.name}</strong>
@@ -1705,6 +2181,13 @@ export default function AdminApp() {
                   </tbody>
                 </table>
               </div>
+              <AdminPagination
+                currentPage={staffPage}
+                totalItems={staffList.length}
+                pageSize={staffPageSize}
+                onPageChange={setStaffPage}
+                onPageSizeChange={setStaffPageSize}
+              />
             </section>
           )}
 
@@ -1718,7 +2201,7 @@ export default function AdminApp() {
                 </div>
               </div>
               <div style={{ padding: '16px' }}>
-                {auditLogs.map((log) => (
+                {paginatedAuditLogs.map((log) => (
                   <article key={log.id} className="audit-log-card" onClick={() => setSelectedAuditLog(log)} style={{ cursor: 'pointer' }}>
                     <div className="audit-log-head">
                       <div>
@@ -1740,6 +2223,13 @@ export default function AdminApp() {
                   <div className="admin-empty-cell">Belum ada riwayat audit yang tercatat.</div>
                 )}
               </div>
+              <AdminPagination
+                currentPage={auditLogPage}
+                totalItems={auditLogs.length}
+                pageSize={auditLogPageSize}
+                onPageChange={setAuditLogPage}
+                onPageSizeChange={setAuditLogPageSize}
+              />
             </section>
           )}
         </main>
@@ -2192,7 +2682,7 @@ export default function AdminApp() {
                     }}
                     onClick={() => {
                       setImageTarget('bundle')
-                      !uploading && bundleFileInputRef.current?.click()
+                      if (!uploading) bundleFileInputRef.current?.click()
                     }}
                   >
                     {uploading && imageTarget === 'bundle' ? (
@@ -2342,7 +2832,7 @@ export default function AdminApp() {
                     type="number"
                     min="1"
                     max={promotionDraft.discount_type === 'percent' ? '100' : undefined}
-                    step={promotionDraft.discount_type === 'percent' ? '1' : '100'}
+                    step="1"
                     placeholder={promotionDraft.discount_type === 'percent' ? 'Contoh: 10' : 'Contoh: 5000'}
                     value={promotionDraft.discount_value}
                     onChange={(e) => setPromotionDraft({ ...promotionDraft, discount_value: e.target.value })}
@@ -2351,18 +2841,38 @@ export default function AdminApp() {
                 </label>
               </div>
               <div className="admin-form-row">
-                <label>Min. belanja (Rp)<input type="number" min="0" step="1000" placeholder="0" value={promotionDraft.min_spend} onChange={(e) => setPromotionDraft({ ...promotionDraft, min_spend: e.target.value })} /></label>
+                <label>Min. belanja (Rp)<input type="number" min="0" step="1" placeholder="0" value={promotionDraft.min_spend} onChange={(e) => setPromotionDraft({ ...promotionDraft, min_spend: e.target.value })} /></label>
                 <label style={{ opacity: promotionDraft.discount_type === 'fixed' ? 0.45 : 1 }}>
                   Maks. diskon (Rp)
                   <input
                     type="number"
                     min="0"
-                    step="1000"
+                    step="1"
                     placeholder={promotionDraft.discount_type === 'fixed' ? 'Tidak berlaku nominal tetap' : 'Kosongkan jika tanpa batas'}
                     disabled={promotionDraft.discount_type === 'fixed'}
                     value={promotionDraft.discount_type === 'fixed' ? '' : promotionDraft.max_discount}
                     onChange={(e) => setPromotionDraft({ ...promotionDraft, max_discount: e.target.value })}
                   />
+                </label>
+              </div>
+              <div className="admin-form-row">
+                <label>
+                  Mulai berlaku (opsional)
+                  <input
+                    type="datetime-local"
+                    value={promotionDraft.starts_at}
+                    onChange={(e) => setPromotionDraft({ ...promotionDraft, starts_at: e.target.value })}
+                  />
+                  <small className="admin-field-tip">Kosongkan jika langsung aktif hari ini</small>
+                </label>
+                <label>
+                  Berakhir pada (opsional)
+                  <input
+                    type="datetime-local"
+                    value={promotionDraft.ends_at}
+                    onChange={(e) => setPromotionDraft({ ...promotionDraft, ends_at: e.target.value })}
+                  />
+                  <small className="admin-field-tip">Kosongkan jika berlaku selamanya</small>
                 </label>
               </div>
               <label className="admin-checkbox-single"><input type="checkbox" checked={promotionDraft.is_active} onChange={(e) => setPromotionDraft({ ...promotionDraft, is_active: e.target.checked })} />Promo aktif dan dapat digunakan</label>
@@ -2484,7 +2994,7 @@ export default function AdminApp() {
                     }}
                     onClick={() => {
                       setImageTarget('banner')
-                      !uploading && bannerFileInputRef.current?.click()
+                      if (!uploading) bannerFileInputRef.current?.click()
                     }}
                   >
                     {uploading && imageTarget === 'banner' ? (

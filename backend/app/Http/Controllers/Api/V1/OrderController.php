@@ -90,8 +90,9 @@ class OrderController extends Controller
             'customer_name' => ['required', 'string', 'max:160'],
             'customer_phone' => ['nullable', 'string', 'max:32'],
             'guest_device_token' => ['nullable', 'string', 'max:96'],
-            'payment_method' => ['required', 'string', 'in:cash,va,qris'],
+            'payment_method' => ['required', 'string', 'in:cash,va,qris,midtrans'],
             'promo_code' => ['nullable', 'string', 'max:50'],
+            'points_redeemed' => ['nullable', 'integer', 'min:0'],
             'items' => ['required', 'array', 'min:1', 'max:30'],
             'items.*.product_id' => ['nullable', 'required_without:items.*.bundle_id', 'integer', 'exists:products,id'],
             'items.*.bundle_id' => ['nullable', 'required_without:items.*.product_id', 'integer', 'exists:bundles,id'],
@@ -113,9 +114,13 @@ class OrderController extends Controller
 
         $order = $service->create($data, $idempotencyKey);
 
+        $message = $order->payment_method === 'cash'
+            ? 'Pesanan tercatat. Pembayaran Cash perlu dikonfirmasi kasir.'
+            : 'Pesanan tercatat. Silakan selesaikan pembayaran online.';
+
         return response()->json([
             'order' => $order,
-            'message' => 'Pesanan tercatat. Pembayaran Cash perlu dikonfirmasi kasir.',
+            'message' => $message,
         ], 201);
     }
 
@@ -129,22 +134,36 @@ class OrderController extends Controller
             return response()->json(['orders' => []]);
         }
 
-        Order::query()
-            ->where('order_status', 'MENUNGGU_PEMBAYARAN')
+        Order::expirePendingOrders();
+
+        // Auto-sync any pending online orders with Midtrans
+        $pendingOnlineOrders = Order::query()
+            ->when($customerId, function ($query) use ($customerId, $deviceToken) {
+                $query->where('customer_id', $customerId)
+                    ->when($deviceToken, fn ($nested) => $nested->orWhere('guest_device_token', $deviceToken));
+            }, function ($query) use ($deviceToken) {
+                $query->where('guest_device_token', $deviceToken)
+                    ->whereDate('created_at', today());
+            })
             ->where('payment_status', 'MENUNGGU')
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<', now())
-            ->update([
-                'order_status' => 'DIBATALKAN',
-                'cancelled_at' => now(),
-            ]);
+            ->whereIn('payment_method', ['midtrans', 'qris', 'va'])
+            ->limit(3)
+            ->get();
+
+        if ($pendingOnlineOrders->isNotEmpty()) {
+            $snapService = app(\App\Services\Payments\MidtransSnapService::class);
+            foreach ($pendingOnlineOrders as $pendingOrder) {
+                $snapService->syncOrderStatus($pendingOrder);
+            }
+        }
 
         $orders = \App\Models\Order::query()
             ->when($customerId, function ($query) use ($customerId, $deviceToken) {
                 $query->where('customer_id', $customerId)
                     ->when($deviceToken, fn ($nested) => $nested->orWhere('guest_device_token', $deviceToken));
             }, function ($query) use ($deviceToken) {
-                $query->where('guest_device_token', $deviceToken);
+                $query->where('guest_device_token', $deviceToken)
+                    ->whereDate('created_at', today());
             })
             ->with(['items', 'payments'])
             ->latest()
@@ -203,6 +222,22 @@ class OrderController extends Controller
         return response()->json([
             'order' => $order,
             'message' => 'Pesanan berhasil diselesaikan. Terima kasih telah memesan di SA.TUANG COFFEE!',
+        ]);
+    }
+
+    public function syncPayment(string $orderNumber): JsonResponse
+    {
+        $order = Order::with(['items', 'payments'])->where('order_number', $orderNumber)->first();
+        if (!$order) {
+            return response()->json(['message' => 'Pesanan tidak ditemukan.'], 404);
+        }
+
+        $snapService = app(\App\Services\Payments\MidtransSnapService::class);
+        $updated = $snapService->syncOrderStatus($order);
+
+        return response()->json([
+            'order' => $order->fresh()->load(['items', 'payments']),
+            'message' => $updated ? 'Status pembayaran berhasil diperbarui dari Midtrans.' : 'Status pembayaran masih menunggu.',
         ]);
     }
 }

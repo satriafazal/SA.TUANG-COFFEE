@@ -44,8 +44,9 @@ export function createCashOrder(input: {
   customer_name: string
   customer_phone?: string
   guest_device_token?: string
-  payment_method: 'cash'
+  payment_method: 'cash' | 'midtrans' | 'qris' | 'va'
   promo_code?: string
+  points_redeemed?: number
   items: Array<{ product_id?: number; bundle_id?: number; quantity: number; special_instructions?: string }>
 }, idempotencyKey: string) {
   return request<OrderReceipt>('/orders', {
@@ -140,6 +141,12 @@ export function completeCustomerOrder(orderNumber: string, deviceToken?: string,
   })
 }
 
+export function syncPaymentStatus(orderNumber: string) {
+  return request<{ order: CustomerOrderRecord; message: string }>(`/orders/${encodeURIComponent(orderNumber)}/sync-payment`, {
+    method: 'POST',
+  })
+}
+
 export type StaffUser = { id: number; name: string; email: string; role: string; permissions: string[] }
 export type StaffOrder = {
   id: number
@@ -157,7 +164,7 @@ export type StaffOrder = {
   created_at: string
   expires_at?: string | null
   items: Array<{ id: number; product_name_snapshot: string; item_type: string; quantity: number; unit_price: string; line_total: string; special_instructions: string | null; preparation_status: 'MENUNGGU' | 'DIPROSES' | 'SIAP' }>
-  payments: Array<{ method: string; status: string; amount: string }>
+  payments: Array<{ id?: number; method: string; status: string; amount: string; verified_by?: number | null; verified_at?: string | null }>
 }
 
 export function getCurrentStaff() {
@@ -435,10 +442,15 @@ export function getAdminAuditLogs() {
   return request<{ audit_logs: AdminAuditLog[] }>('/admin/audit-logs')
 }
 
-export function getCashierOrders(completed = false, search = '') {
+export function getCashierOrders(arg1: boolean | string = '', arg2 = '') {
   const query = new URLSearchParams()
-  if (search.trim()) query.set('q', search.trim())
-  return request<{ orders: StaffOrder[] }>(`/cashier/orders${completed ? '/completed' : ''}${query.size ? `?${query}` : ''}`)
+  if (typeof arg1 === 'boolean') {
+    if (arg2.trim()) query.set('q', arg2.trim())
+    return request<{ orders: StaffOrder[] }>(`/cashier/orders${arg1 ? '/completed' : ''}${query.size ? `?${query}` : ''}`)
+  }
+  if (arg1.trim()) query.set('q', arg1.trim())
+  if (arg2) query.set('date', arg2)
+  return request<{ orders: StaffOrder[] }>(`/cashier/orders${query.size ? `?${query}` : ''}`)
 }
 
 export type CashierProduct = {
@@ -470,6 +482,10 @@ export function updateCashierBundleAvailability(bundleId: number, is_active: boo
 
 export function confirmCashPayment(orderNumber: string) {
   return request<{ order: StaffOrder }>(`/cashier/orders/${encodeURIComponent(orderNumber)}/confirm-payment`, { method: 'POST' })
+}
+
+export function confirmOnlineOrder(orderNumber: string) {
+  return request<{ order: StaffOrder }>(`/cashier/orders/${encodeURIComponent(orderNumber)}/confirm-online`, { method: 'POST' })
 }
 
 export function updatePreparationGroupStatus(orderNumber: string, itemType: string, status: 'DIPROSES' | 'SIAP') {
@@ -511,4 +527,28 @@ export function importAdminImageUrl(url: string): Promise<{ path: string; url: s
     body: JSON.stringify({ url }),
   })
 }
+
+export interface LoyaltySettings {
+  is_active: boolean
+  earning_threshold: number
+  point_value_rupiah: number
+  min_redemption_points: number
+  max_discount_percentage: number
+}
+
+export function getLoyaltySettings() {
+  return request<{ settings: LoyaltySettings }>('/loyalty/settings')
+}
+
+export function getAdminLoyaltySettings() {
+  return request<{ settings: LoyaltySettings }>('/admin/loyalty/settings')
+}
+
+export function updateAdminLoyaltySettings(input: LoyaltySettings) {
+  return request<{ message: string; settings: LoyaltySettings }>('/admin/loyalty/settings', {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
 

@@ -19,7 +19,7 @@ Barista/dapur bekerja langsung dari Kitchen Order Ticket (KOT) cetak dan layar a
 ## 2. Masalah dan Peluang
 
 * **Antrean Menumpuk di Meja Kasir:** Pelanggan sering menghabiskan waktu lama memilih menu di depan kasir. Solusi: Pelanggan dapat membuka katalog web dari meja atau antrean, memesan langsung, dan mendapatkan nomor tiket harian.
-* **Risiko Pesanan Fiktif / Spam Kasir:** Pemesanan tunai via web rentan terhadap pesanan palsu. Solusi: Pembatasan perangkat (*device lock* max 1 pending order per device), pembatalan otomatis (*auto-expire*) dalam 10 menit, dan aturan bahwa barista hanya meracik pesanan yang telah dikonfirmasi LUNAS oleh kasir.
+* **Risiko Pesanan Fiktif & Status Nyangkut:** Pemesanan tunai via web rentan terhadap pesanan palsu dan antrean tertinggal dari kunjungan kemarin. Solusi: Pembatasan perangkat (*device lock* max 1 pending order per device per hari), reset otomatis sesi dan token perangkat saat pergantian tanggal (pukul 00:00), isolasi riwayat tamu harian, pembatalan otomatis (*auto-expire*) dalam 10 menit, dan aturan bahwa barista hanya meracik pesanan yang telah dikonfirmasi LUNAS oleh kasir.
 * **Struktur Menu yang Kompleks:** Menu kopi dan makanan membutuhkan pengelompokan yang jelas antara kategori induk (Minuman vs Makanan) dan subkategori spesifik (Espresso Based, Manual Brew, Rice Bowl, Pastry). Solusi: Sistem kategori berjenjang 2-tingkat.
 * **Koordinasi Kesiapan Makanan dan Minuman:** Waktu pembuatan minuman dan makanan sering kali berbeda. Solusi: Pembaruan status kesiapan terpisah per grup kategori (Food & Drink) dengan eskalasi otomatis ke `SIAP_DIAMBIL` saat seluruh item siap.
 
@@ -84,7 +84,9 @@ Barista/dapur bekerja langsung dari Kitchen Order Ticket (KOT) cetak dan layar a
 * **Keranjang & Catatan Khusus:** Modifikasi kuantitas, catatan khusus per menu (jika produk mengizinkan catatan), dan kalkulasi subtotal instan.
 * **Checkout Cepat & Anti-Spam:**
   - Validasi harga dan ketersediaan menu di sisi server (*server-calculated total*).
-  - Proteksi *device lock*: Pelanggan dibatasi maksimal 1 pesanan tunai aktif dalam status menunggu pembayaran.
+  - Proteksi *device lock*: Pelanggan dibatasi maksimal 1 pesanan tunai aktif dalam status menunggu pembayaran pada hari yang sama.
+  - Siklus Sesi Harian (*Midnight Reset 00:00*): Token perangkat dan keranjang tamu otomatis di-reset saat pergantian tanggal; riwayat pesanan tamu di server di-scope hanya untuk hari ini agar status kemarin tidak tersangkut.
+  - Tombol mandiri "Sesi Baru" di halaman pesanan tersimpan bagi tamu untuk memulai antrean baru seketika.
   - Dukungan kode promo / voucher dengan validasi batas masa berlaku dan minimal belanja.
 * **Pelacakan Pesanan (Order Tracking):**
   - Halaman pelacakan status pesanan real-time.
@@ -107,7 +109,10 @@ Barista/dapur bekerja langsung dari Kitchen Order Ticket (KOT) cetak dan layar a
   - Tombol aksi `DIPROSES` dan `SIAP` per grup kategori.
   - Eskalasi otomatis: Begitu seluruh grup kesiapan berstatus `SIAP`, status pesanan secara otomatis naik menjadi `SIAP_DIAMBIL`.
 * **Ketersediaan Produk Kasir:** Toggle instan ketersediaan produk dan bundle menu dari meja kasir saat stok habis.
-* **Riwayat Pesanan Selesai:** Tab terpisah khusus pesanan yang telah selesai (`SELESAI`) atau dibatalkan untuk keperluan pelaporan dan audit kasir.
+* **Antrean Kasir Universal Harian & Kartu Ringkasan:**
+  - Antrean otomatis mengulang setiap pergantian hari (`whereDate('created_at', today())`).
+  - Kartu metrik ringkasan interaktif: `PERLU KONFIRMASI`, `SEDANG DIBUAT`, `SIAP DIAMBIL`, `SELESAI`, dan `TOTAL HARI INI`.
+  - Filter terpadu antrean: Semua, Menunggu konfirmasi, Sedang dibuat, Siap diambil, Selesai, dan Dibatalkan dengan badge jumlah pesanan *real-time*.
 
 ### 6.3 Admin Web (`/admin`)
 * **Tampilan Login Terstandarisasi:** Antarmuka login admin yang seragam dalam struktur, tipografi, warna, dan kontrol dengan login kasir.

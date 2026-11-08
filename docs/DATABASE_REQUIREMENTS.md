@@ -44,7 +44,7 @@ Dokumen ini menjadi acuan perancangan skema PostgreSQL 17 dan migrasi aplikasi. 
 - Snapshot diskon yang diterapkan disimpan pada order/order item; perubahan aturan tidak mengubah order lama.
 
 ### Pesanan dan status
-- `orders`: public order number unik (`order_number`), nomor tiket panggil harian (`daily_ticket_number` misal `#042`), relasi member (`customer_id`), token perangkat tamu (`guest_device_token`), batas waktu pembayaran tunai (`expires_at`), nama pelanggan snapshot, status order, total, metode pembayaran, waktu.
+- `orders`: public order number unik (`order_number`), nomor tiket panggil harian (`daily_ticket_number` misal `#042`), relasi member (`customer_id`), token perangkat tamu (`guest_device_token` dengan scope query harian `whereDate('created_at', today())`), batas waktu pembayaran tunai (`expires_at`), nama pelanggan snapshot, status order, total, metode pembayaran, waktu.
 - `order_items`: snapshot produk/harga/kuantitas/catatan dan referensi komponen bundle bila relevan.
 - Status kesiapan disimpan pada tiap item pesanan, tetapi UI Kasir memperbarui seluruh item dengan `item_type` yang sama secara sekaligus; kelompok Makanan, Minuman, dan Lainnya tetap independen.
 - `order_status_history` dan riwayat status item: status lama/baru, aktor, waktu, alasan opsional.

@@ -17,15 +17,17 @@ Sistem Customer Web telah ditingkatkan dari ketergantungan `localStorage / proto
    - Pelanggan tamu (*Guest*) dapat langsung memesan cukup dengan mengisi **Nama Pemesan / Panggilan** tanpa dipaksa mengisi nomor HP atau nomor meja.
    - Sesuai model operasional **Self Pick-up di Bar (ala Kopi Tuku / Starbucks)**, pelanggan menerima **Nomor Tiket Harian Singkat** (contoh: **#042**) untuk ditunjukkan ke kasir saat pembayaran.
 
-3. **5 Lapis Pengamanan Anti-Spam Cash:**
-   - **Device Lock (Max 1 Pending Order):** Setiap perangkat tamu diidentifikasi dengan `guest_device_token`. Pelanggan tidak dapat membuat pesanan tunai baru jika masih memiliki pesanan `MENUNGGU_PEMBAYARAN` yang aktif.
-   - **Auto-Expire 10 Menit:** Pesanan tunai yang tidak dibayar ke kasir dalam 10 menit otomatis hangus (`DIBATALKAN`) di server.
-   - **Barista Gatekeeper:** Barista hanya menyeduh pesanan yang statusnya sudah dikonfirmasi LUNAS oleh kasir. Bahan baku 100% aman dari pesanan fiktif.
+3. **6 Lapis Pengamanan Anti-Spam & Siklus Sesi Harian:**
+   - **Device Lock (Max 1 Pending Order):** Setiap perangkat tamu diidentifikasi dengan `guest_device_token`. Pelanggan tidak dapat membuat pesanan tunai baru jika masih memiliki pesanan `MENUNGGU_PEMBAYARAN` yang aktif pada hari yang sama.
+   - **Midnight Reset (00:00) & Daily Scoping:** Masa berlaku token perangkat tamu dan keranjang lokal otomatis di-reset saat berganti tanggal (pukul 00:00). Endpoint `my-orders` untuk tamu dibatasi khusus hari ini (`whereDate('created_at', today())`) agar status pesanan dari hari kemarin tidak pernah "nyangkut" di perangkat pelanggan.
+   - **Auto-Expire 10 Menit & Auto-Cancel:** Pesanan tunai yang tidak dibayar ke kasir dalam 10 menit otomatis hangus (`DIBATALKAN`) di server dan tidak lagi memblokir pemesanan baru.
+   - **Barista & Kasir Gatekeeper:** Barista dan kasir hanya memproses pesanan yang statusnya sudah LUNAS (dikonfirmasi kasir untuk Cash, atau diverifikasi otomatis oleh Midtrans untuk Online). Pesanan online yang belum dibayar tidak dimunculkan di antrean kasir untuk mencegah antrean semu dan pemborosan bahan baku (*food waste*).
    - **Pencarian Tiket Kasir:** Kasir dapat mencari pesanan dengan cepat menggunakan nomor tiket 3-digit atau nama pelanggan.
    - **Rate Limiting:** Server membatasi percobaan akses dan pendaftaran akun dari IP yang sama.
 
-4. **Penyimpanan Pesanan Terpusat:**
-   - Endpoint `GET /api/v1/orders/my-orders` mengambil riwayat pesanan aktif dan selesai langsung dari database pusat berdasarkan `device_token` (untuk Guest) atau identitas akun Member.
+4. **Penyimpanan Pesanan Terpusat & Reset Mandiri:**
+   - Endpoint `GET /api/v1/orders/my-orders` mengambil riwayat pesanan aktif dan selesai langsung dari database pusat berdasarkan `device_token` (untuk Guest, terbatas hari ini) atau identitas akun Member.
+   - Disediakan tombol **"Sesi Baru"** pada antarmuka pelanggan tamu untuk mereset sesi seketika setelah seluruh pesanan selesai/batal.
 
 ---
 
@@ -34,7 +36,7 @@ Sistem Customer Web telah ditingkatkan dari ketergantungan `localStorage / proto
 | Bagian | Status Implementasi | Catatan Operasional |
 |---|---|---|
 | **Akun Member** | **Produksi (Real DB & Sanctum)** | Tabel `customers` di MySQL/PostgreSQL. Mendukung login dengan Email atau No. HP + Password min. 8 karakter. |
-| **Sesi Guest & Anti-Spam** | **Produksi (Device Lock & Auto-Expire)** | Token perangkat anonim (`guest_device_token`), proteksi spam 1 pesanan pending, auto-expire 10 menit. |
+| **Sesi Guest & Anti-Spam** | **Produksi (Device Lock, Auto-Expire, & Midnight Reset)** | Token perangkat harian (`guest_device_token`), reset otomatis tiap 00:00, isolasi antrean hari ini, proteksi 1 pending order, dan tombol Sesi Baru. |
 | **Nomor Tiket Antrean** | **Produksi (`daily_ticket_number`)** | Nomor antrean harian singkat (misal `#001`, `#002`) yang di-reset setiap hari untuk panggilan bar. |
 | **Riwayat Pesanan** | **Produksi (`my-orders`)** | Terhubung langsung ke database pusat Laravel via API. |
 | **Poin Loyalitas** | **Dasar (Tersimpan di DB)** | Poin bertambah otomatis saat kasir mengonfirmasi pembayaran. Aturan penukaran reward menunggu konfigurasi lanjutan. |

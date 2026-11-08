@@ -1,11 +1,14 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AdminCatalogController;
+use App\Http\Controllers\Api\V1\AdminLoyaltyController;
 use App\Http\Controllers\Api\V1\AuthController;
 use App\Http\Controllers\Api\V1\CashierOrderController;
+use App\Http\Controllers\Api\V1\LoyaltyController;
 use App\Http\Controllers\Api\V1\MemberAuthController;
 use App\Http\Controllers\Api\V1\MenuController;
 use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\PaymentWebhookController;
 use App\Http\Controllers\Api\V1\TrackOrderController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,8 +17,11 @@ Route::prefix('v1')->group(function (): void {
     Route::post('/orders', [OrderController::class, 'store'])->middleware('throttle:30,1')->name('api.v1.orders.store');
     Route::get('/orders/my-orders', [OrderController::class, 'myOrders'])->name('api.v1.orders.my-orders');
     Route::post('/promotions/validate', [OrderController::class, 'validatePromo'])->middleware('throttle:30,1')->name('api.v1.promotions.validate');
+    Route::get('/loyalty/settings', [LoyaltyController::class, 'settings'])->name('api.v1.loyalty.settings');
     Route::get('/orders/{orderNumber}/status', [TrackOrderController::class, 'show'])->middleware('throttle:60,1')->name('api.v1.orders.status');
     Route::post('/orders/{orderNumber}/complete', [OrderController::class, 'complete'])->middleware('throttle:30,1')->name('api.v1.orders.complete');
+    Route::post('/orders/{orderNumber}/sync-payment', [OrderController::class, 'syncPayment'])->middleware('throttle:30,1')->name('api.v1.orders.sync-payment');
+    Route::post('/payments/midtrans-webhook', [PaymentWebhookController::class, 'handle'])->name('api.v1.payments.midtrans-webhook');
 
     Route::post('/members/register', [MemberAuthController::class, 'register'])->middleware('throttle:15,1')->name('api.v1.members.register');
     Route::post('/members/login', [MemberAuthController::class, 'login'])->middleware('throttle:20,1')->name('api.v1.members.login');
@@ -65,6 +71,8 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('/orders', [AdminCatalogController::class, 'orders'])->name('api.v1.admin.orders.index');
         Route::get('/audit-logs', [AdminCatalogController::class, 'auditLogs'])->name('api.v1.admin.audit-logs.index');
+        Route::get('/loyalty/settings', [AdminLoyaltyController::class, 'show'])->name('api.v1.admin.loyalty.show');
+        Route::put('/loyalty/settings', [AdminLoyaltyController::class, 'update'])->name('api.v1.admin.loyalty.update');
     });
     Route::prefix('cashier')->middleware(['auth:sanctum', 'role:cashier'])->group(function (): void {
         Route::get('/products', [CashierOrderController::class, 'products'])->name('api.v1.cashier.products.index');
@@ -72,7 +80,9 @@ Route::prefix('v1')->group(function (): void {
         Route::patch('/bundles/{bundleId}/availability', [CashierOrderController::class, 'updateBundleAvailability'])->name('api.v1.cashier.bundles.availability');
         Route::get('/orders', [CashierOrderController::class, 'index'])->name('api.v1.cashier.orders.index');
         Route::get('/orders/completed', [CashierOrderController::class, 'completed'])->name('api.v1.cashier.orders.completed');
+        Route::get('/orders/cancelled', [CashierOrderController::class, 'cancelled'])->name('api.v1.cashier.orders.cancelled');
         Route::post('/orders/{orderNumber}/confirm-payment', [CashierOrderController::class, 'confirmPayment'])->name('api.v1.cashier.orders.confirm-payment');
+        Route::post('/orders/{orderNumber}/confirm-online', [CashierOrderController::class, 'confirmOnline'])->name('api.v1.cashier.orders.confirm-online');
         Route::patch('/orders/{orderNumber}/preparation-groups', [CashierOrderController::class, 'updatePreparationGroupStatus'])->name('api.v1.cashier.preparation-groups.update');
         Route::post('/orders/{orderNumber}/complete', [CashierOrderController::class, 'complete'])->name('api.v1.cashier.orders.complete');
     });

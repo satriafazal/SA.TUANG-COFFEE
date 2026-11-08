@@ -39,7 +39,10 @@ Sistem dirancang dengan arsitektur modern terpisah (*decoupled architecture*):
 ### 4.1 Autentikasi, Otorisasi, dan Manajemen Sesi
 * **FR-AUTH-01 (Landing Page & Pemilihan Identitas):** Customer Web HARUS menyediakan halaman awal informasional dengan navigasi cepat yang memberikan pilihan fleksibel antara memesan langsung sebagai Guest atau masuk/daftar sebagai Member.
 * **FR-AUTH-02 (Registrasi & Login Member):** Sistem HARUS mendukung registrasi Member menggunakan Nama, Email unik, Nomor WhatsApp format Indonesia (`regex:/^08[0-9]{8,12}$/`), dan Kata Sandi minimal 8 karakter. Login mendukung pengenal berupa Email atau Nomor HP dengan kata sandi ter-enkripsi Bcrypt.
-* **FR-AUTH-03 (Token Perangkat Guest & Kunci Anti-Spam):** Sesi pelanggan tamu HARUS diidentifikasi dengan `guest_device_token` anonim yang dikirimkan melalui header `X-Device-Token`. Sistem HARUS membatasi satu perangkat tamu hanya boleh memiliki **maksimal 1 pesanan tunai aktif** berstatus `MENUNGGU_PEMBAYARAN`.
+* **FR-AUTH-03 (Token Perangkat Guest & Kunci Anti-Spam Harian):** Sesi pelanggan tamu HARUS diidentifikasi dengan `guest_device_token` anonim yang dikirimkan melalui query `device_token` atau header `X-Device-Token`.
+  - *Masa Berlaku Harian (Midnight Reset 00:00):* Token perangkat dan penyimpanan lokal pelanggan (`satuang-cart`, `satuang-guest-name`, sesi pemesanan) HARUS otomatis di-reset saat pergantian tanggal (melewati pukul 00:00) agar pelanggan selalu mendapatkan antarmuka yang segar pada hari kunjungan berikutnya.
+  - *Kunci Pesanan Pending Harian:* Sistem membatasi satu perangkat tamu hanya boleh memiliki **maksimal 1 pesanan tunai aktif** berstatus `MENUNGGU_PEMBAYARAN` pada tanggal hari ini (`whereDate('created_at', today())`). Pesanan pending yang telah kedaluwarsa (`expires_at < now()`) otomatis dibatalkan (`DIBATALKAN`) saat pelanggan mencoba membuat pesanan baru, dan pesanan pending dari hari kemarin dilarang memblokir pesanan baru hari ini.
+  - *Isolasi Riwayat Tamu:* Endpoint riwayat pesanan (`/api/v1/orders/my-orders`) untuk tamu HARUS dibatasi secara ketat hanya menampilkan pesanan yang dibuat pada hari yang sama (`whereDate('created_at', today())`).
 * **FR-AUTH-04 (Autentikasi Staf Berbasis Peran):** Endpoint staf (`/api/v1/auth/login`) HARUS memvalidasi akun staf aktif dan mengembalikan token Sanctum dengan otorisasi berbasis peran (`admin` atau `cashier`). Akun nonaktif (`is_active = false`) HARUS ditolak masuk.
 * **FR-AUTH-05 (Proteksi Akun Mandiri Admin):** Admin HARUS dicegah dari mengubah peran akunnya sendiri menjadi non-admin atau menonaktifkan status akunnya sendiri.
 * **FR-AUTH-06 (Rate Limiting Autentikasi):** Sistem HARUS membatasi percobaan login staf dan member maksimal 5 kali per menit per IP/identitas sebelum memberlakukan penundaan (*HTTP 429 Too Many Requests*). Endpoint registrasi member dibatasi maksimal 15 request per menit.
@@ -63,25 +66,32 @@ Sistem dirancang dengan arsitektur modern terpisah (*decoupled architecture*):
 * **FR-ORD-05 (Idempotensi Pesanan):** Endpoint pembuatan pesanan HARUS mendukung header `Idempotency-Key` untuk mencegah duplikasi pesanan jika terjadi gangguan jaringan atau klik ganda oleh pelanggan.
 * **FR-ORD-06 (Pelacakan Pesanan Anti-IDOR):** Endpoint pelacakan status pesanan publik (`/api/v1/orders/{orderNumber}/status`) HARUS memverifikasi kesesuaian Nomor Pesanan dan Nama Pelanggan secara *case-insensitive* dengan prepared statement SQL sebelum menyajikan data.
 * **FR-ORD-07 (Otorisasi Penyelesaian Mandiri Pelanggan):** Endpoint penyelesaian pesanan oleh pelanggan (`/api/v1/orders/{orderNumber}/complete`) HARUS mensyaratkan status pesanan sudah `SIAP_DIAMBIL`, serta memvalidasi kepemilikan sesi Member atau kecocokan `guest_device_token`. Pelanggan asing dilarang menyelesaikan pesanan orang lain hanya dengan menebak nama.
+* **FR-ORD-08 (Reset Mandiri Sesi Tamu / Sesi Baru):** Antarmuka pesanan tersimpan (`/orders`) HARUS menyediakan tombol aksi "Sesi Baru" bagi pelanggan tamu yang memiliki pesanan untuk memperbarui token perangkat seketika dan membersihkan tampilan antrean tanpa harus menunggu pergantian tanggal tengah malam.
 
 ### 4.4 Pembayaran dan Kasir
 * **FR-PAY-01 (Metode Pembayaran MVP):** Sistem HARUS mendukung metode pembayaran `cash` di kasir (tunai atau QRIS statis counter). Metode `va` atau `qris` otomatis ditolak dengan pesan validasi aman hingga gateway eksternal dikonfigurasi.
-* **FR-PAY-02 (Konfirmasi Pembayaran Kasir):** Kasir HARUS mengonfirmasi penerimaan pembayaran tunai melalui endpoint khusus yang terkunci transaksional (`lockForUpdate`). Konfirmasi yang sukses mengubah `payment_status` menjadi `BERHASIL`, `order_status` menjadi `PESANAN_DITERIMA`, mengosongkan timer `expires_at`, dan mencatat riwayat audit.
+* **FR-PAY-02 (Konfirmasi Pembayaran Kasir):** Kasir HARUS mengonfirmasi penerimaan pembayaran (tunai atau cashless) melalui endpoint khusus yang terkunci transaksional (`lockForUpdate`). Konfirmasi yang sukses mengubah `payment_status` menjadi `BERHASIL`, secara otomatis memajukan `order_status` menjadi `SEDANG_DIBUAT` dan status item persiapan menjadi `DIPROSES`, mengosongkan timer `expires_at`, dan mencatat riwayat audit.
 * **FR-PAY-03 (Pemberian Poin Loyalitas Member):** Konfirmasi pembayaran atas pesanan milik akun Member HARUS secara otomatis menambahkan poin loyalitas ke saldo akun Member terkait (proporsional 1 poin per Rp 10.000 belanja).
 
 ### 4.5 Alur Kesiapan Pesanan (Preparation Groups)
 * **FR-STAT-01 (Pemisahan Status Pembayaran dan Status Pesanan):** Status pesanan dan status pembayaran HARUS dikelola secara terpisah.
   * *Status Pesanan:* `MENUNGGU_PEMBAYARAN`, `PESANAN_DITERIMA`, `SEDANG_DIBUAT`, `SIAP_DIAMBIL`, `SELESAI`, `DIBATALKAN`.
   * *Status Pembayaran:* `MENUNGGU`, `BERHASIL`, `DIBATALKAN`.
-* **FR-STAT-02 (Grup Kesiapan Kategori):** Item dalam pesanan HARUS diklasifikasikan ke dalam kelompok persiapan berdasarkan `item_type` (`food` atau `drink`/`bundle`). Kasir dapat memperbarui status kesiapan per kelompok menjadi `DIPROSES` atau `SIAP`.
+* **FR-STAT-02 (Grup Kesiapan Kategori):** Item dalam pesanan HARUS diklasifikasikan ke dalam kelompok persiapan berdasarkan `item_type` (`food` atau `drink`/`bundle`). Konfirmasi pesanan oleh kasir secara otomatis mengaktifkan status item menjadi `DIPROSES` (`SEDANG_DIBUAT`). Kasir/barista cukup menandai kesiapan per kelompok menjadi `SIAP`.
 * **FR-STAT-03 (Auto-Advance Kesiapan Pesanan):** Ketika seluruh kelompok item dalam satu pesanan telah ditandai `SIAP`, sistem backend HARUS secara otomatis menaikkan status pesanan menjadi `SIAP_DIAMBIL` tanpa memerlukan pembaruan manual kedua.
-* **FR-STAT-04 (Pemisahan Antrean Aktif dan Pesanan Selesai):** Antrean kasir aktif HARUS mengecualikan pesanan yang berstatus `SELESAI` atau `DIBATALKAN`. Pesanan selesai dapat diakses dan dicari melalui tab/endpoint riwayat terpisah (`/api/v1/cashier/orders/completed`).
+* **FR-STAT-04 (Antrean Kasir Universal Harian):** Antrean kasir dirancang universal berbasis transaksi hari ini (`whereDate('created_at', today())`), sehingga antrean dan nomor tiket harian otomatis mengulang/reset setiap pergantian hari. Kasir memfilter antrean melalui filter terpadu:
+  1. **Semua:** Seluruh pesanan hari ini dari semua status.
+  2. **Menunggu Konfirmasi:** Pesanan tunai pending dan pesanan cashless lunas yang memerlukan konfirmasi serta cetak KOT oleh kasir.
+  3. **Sedang Dibuat:** Pesanan yang sedang dalam proses persiapan di barista/dapur.
+  4. **Siap Diambil:** Pesanan yang telah selesai disiapkan dan siap diserahkan kepada pelanggan.
+  5. **Selesai:** Pesanan yang telah diserahkan dan selesai hari ini.
+  6. **Dibatalkan:** Pesanan yang dibatalkan sistem karena kedaluwarsa atau pembatalan.
 
 ### 4.6 Cetak Dokumen Operasional (Print Jobs)
-* **FR-PRN-01 (Pembuatan Antrean Cetak Otomatis):** Konfirmasi pembayaran yang sah HARUS secara otomatis menghasilkan dua entri pekerjaan cetak di database:
+* **FR-PRN-01 (Pembuatan Antrean Cetak Otomatis):** Konfirmasi pembayaran yang sah (baik konfirmasi tunai maupun notifikasi cashless lunas) HARUS secara otomatis menghasilkan dua entri pekerjaan cetak di database:
   1. `invoice`: Struk pembayaran untuk kasir / pelanggan.
   2. `kot`: *Kitchen Order Ticket* untuk meja barista / dapur.
-* **FR-PRN-02 (Dukungan Cetak Browser):** Web Kasir HARUS mendukung pencetakan nota langsung melalui dialog cetak browser yang diformat presisi untuk printer thermal standar (lebar 72mm - 80mm).
+* **FR-PRN-02 (Dukungan Cetak Browser & Konfirmasi Cashless):** Web Kasir HARUS mendukung pencetakan nota langsung melalui dialog cetak browser yang diformat presisi untuk printer thermal standar (lebar 72mm - 80mm). Untuk pesanan cashless yang telah lunas, kasir HARUS memiliki tombol **"Konfirmasi & cetak"** yang sama dengan pesanan tunai untuk membuka dialog cetak (Invoice + KOT), mencatat verifikasi kasir (`verified_by`), dan langsung memajukan pesanan ke status `SEDANG_DIBUAT`. Banner konfirmasi otomatis hilang setelah kasir menekan tombol konfirmasi.
 
 ### 4.7 Paket Menu (Bundles) dan Promosi
 * **FR-BND-01 (Manajemen Paket Menu):** Admin HARUS dapat membuat paket menu bundle dengan harga khusus dan menghubungkan satu atau lebih produk komponen beserta kuantitasnya.
