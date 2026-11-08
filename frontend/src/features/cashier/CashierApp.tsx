@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import {
   completeCashierOrder,
   confirmCashPayment,
+  confirmOnlineOrder,
   getCashierOrders,
   getCashierProducts,
   getCurrentStaff,
@@ -20,25 +21,13 @@ import { dateTime, escapeHtml, rupiah, todayLabel } from '../../utils/formatters
 import { orderStatusLabels, paymentStatusLabels, preparationGroupLabel } from '../../utils/constants'
 
 type CashierView = 'orders' | 'menu'
-type OrderTab = 'active' | 'completed'
 type QueueFilter =
-  | 'BERJALAN'
-  | ''
-  | 'MENUNGGU_PEMBAYARAN'
-  | 'PESANAN_DITERIMA'
+  | 'ALL'
+  | 'KONFIRMASI'
   | 'SEDANG_DIBUAT'
   | 'SIAP_DIAMBIL'
+  | 'SELESAI'
   | 'DIBATALKAN'
-
-const orderFilters: Array<{ value: QueueFilter; label: string }> = [
-  { value: 'BERJALAN', label: 'Pesanan berjalan' },
-  { value: '', label: 'Semua' },
-  { value: 'MENUNGGU_PEMBAYARAN', label: 'Pembayaran' },
-  { value: 'PESANAN_DITERIMA', label: 'Diterima' },
-  { value: 'SEDANG_DIBUAT', label: 'Diproses' },
-  { value: 'SIAP_DIAMBIL', label: 'Siap diambil' },
-  { value: 'DIBATALKAN', label: 'Dibatalkan' },
-]
 
 const hasStoredStaffToken = typeof window !== 'undefined' && Boolean(window.localStorage.getItem('satuang-token'))
 const isCashierRole = (user: StaffUser) => user.role === 'cashier'
@@ -147,9 +136,8 @@ export default function CashierApp() {
   const [loginBusy, setLoginBusy] = useState(false)
   const [loginError, setLoginError] = useState('')
   const [view, setView] = useState<CashierView>('orders')
-  const [tab, setTab] = useState<OrderTab>('active')
   const [search, setSearch] = useState('')
-  const [queueFilter, setQueueFilter] = useState<QueueFilter>('BERJALAN')
+  const [queueFilter, setQueueFilter] = useState<QueueFilter>('ALL')
   const [orders, setOrders] = useState<StaffOrder[]>([])
   const [selectedOrderNumber, setSelectedOrderNumber] = useState<string | null>(null)
   const [products, setProducts] = useState<CashierProduct[]>([])
@@ -186,7 +174,7 @@ export default function CashierApp() {
     if (!staff) return
     if (!quiet) setLoadingOrders(true)
     try {
-      const response = await getCashierOrders(tab === 'completed', search)
+      const response = await getCashierOrders(search)
       setOrders(response.orders)
       setError('')
       setSelectedOrderNumber((selected) => selected && response.orders.some((order) => order.order_number === selected) ? selected : response.orders[0]?.order_number ?? null)
@@ -195,7 +183,7 @@ export default function CashierApp() {
     } finally {
       setLoadingOrders(false)
     }
-  }, [staff, tab, search])
+  }, [staff, search])
 
   useEffect(() => {
     if (!staff || view !== 'orders') return
@@ -223,13 +211,52 @@ export default function CashierApp() {
     return () => { active = false }
   }, [staff, view])
 
+  const needConfirmationOrders = useMemo(
+    () => orders.filter((o) =>
+      (o.payment_method === 'cash' && o.order_status === 'MENUNGGU_PEMBAYARAN') ||
+      (o.payment_method !== 'cash' && o.payment_status === 'BERHASIL' && !o.payments?.some((p) => p.verified_by))
+    ),
+    [orders]
+  )
+  const inProgressOrders = useMemo(
+    () => orders.filter((o) => o.order_status === 'SEDANG_DIBUAT' || o.order_status === 'PESANAN_DITERIMA'),
+    [orders]
+  )
+  const readyOrders = useMemo(
+    () => orders.filter((o) => o.order_status === 'SIAP_DIAMBIL'),
+    [orders]
+  )
+  const completedOrders = useMemo(
+    () => orders.filter((o) => o.order_status === 'SELESAI'),
+    [orders]
+  )
+  const cancelledOrders = useMemo(
+    () => orders.filter((o) => o.order_status === 'DIBATALKAN'),
+    [orders]
+  )
+
   const filteredOrders = useMemo(() => {
     return orders.filter((order) => {
-      if (queueFilter === 'BERJALAN') {
-        return order.order_status !== 'SELESAI' && order.order_status !== 'DIBATALKAN'
+      if (queueFilter === 'ALL') return true
+      if (queueFilter === 'KONFIRMASI') {
+        return (
+          (order.payment_method === 'cash' && order.order_status === 'MENUNGGU_PEMBAYARAN') ||
+          (order.payment_method !== 'cash' && order.payment_status === 'BERHASIL' && !order.payments?.some((p) => p.verified_by))
+        )
       }
-      if (!queueFilter) return true
-      return order.order_status === queueFilter
+      if (queueFilter === 'SEDANG_DIBUAT') {
+        return order.order_status === 'SEDANG_DIBUAT' || order.order_status === 'PESANAN_DITERIMA'
+      }
+      if (queueFilter === 'SIAP_DIAMBIL') {
+        return order.order_status === 'SIAP_DIAMBIL'
+      }
+      if (queueFilter === 'SELESAI') {
+        return order.order_status === 'SELESAI'
+      }
+      if (queueFilter === 'DIBATALKAN') {
+        return order.order_status === 'DIBATALKAN'
+      }
+      return true
     })
   }, [orders, queueFilter])
   const selectedOrder = useMemo(() => orders.find((order) => order.order_number === selectedOrderNumber) ?? null, [orders, selectedOrderNumber])
@@ -301,6 +328,31 @@ export default function CashierApp() {
     } catch (cause) {
       popup?.close()
       setError(cause instanceof Error ? cause.message : 'Pembayaran belum dapat dikonfirmasi.')
+      await refreshOrders(true)
+    } finally {
+      setBusyAction('')
+    }
+  }
+
+  async function handleConfirmOnline(order: StaffOrder) {
+    const popup = window.open('', '_blank', 'width=460,height=800')
+    setBusyAction(`payment:${order.order_number}`)
+    setError('')
+    setNotice('')
+    try {
+      const result = await confirmOnlineOrder(order.order_number)
+      if (popup) {
+        popup.document.open()
+        popup.document.write(printMarkup(result.order))
+        popup.document.close()
+      } else {
+        setNotice('Pembayaran cashless berhasil dikonfirmasi. Jika dialog cetak tidak muncul, pilih “Cetak invoice + KOT”.')
+      }
+      setSelectedOrderNumber(order.order_number)
+      await refreshOrders(true)
+    } catch (cause) {
+      popup?.close()
+      setError(cause instanceof Error ? cause.message : 'Pembayaran cashless belum dapat dikonfirmasi.')
       await refreshOrders(true)
     } finally {
       setBusyAction('')
@@ -384,27 +436,88 @@ export default function CashierApp() {
     </section>
   </main>
 
-  const activeCount = orders.filter((order) => order.order_status === 'MENUNGGU_PEMBAYARAN').length
   return <div className="cashier-app">
     <header className="cashier-topbar">
       <a className="cashier-brand" href="/kasir"><span className="cashier-brand-mark">S</span><span><strong>SA.TUANG</strong><small>COFFEE · BANJAR WIJAYA</small></span></a>
       <div className="cashier-account"><span className="cashier-account-avatar">{staff.name.slice(0, 1).toUpperCase()}</span><span className="cashier-account-copy"><b>{staff.name}</b><small>Kasir</small></span><button className="cashier-logout" onClick={() => void signOut()}>Keluar</button></div>
     </header>
     <main className="cashier-main">
-      <div className="cashier-page-head"><div><span className="cashier-eyebrow">SA.TUANG COFFEE · BANJAR WIJAYA</span><h1>{view === 'orders' ? tab === 'active' ? 'Antrean pesanan' : 'Riwayat pesanan' : 'Ketersediaan menu'}</h1><p>{view === 'orders' ? tab === 'active' ? 'Pantau pembayaran dan alur persiapan setiap pesanan.' : 'Pesanan yang sudah diserahkan kepada pelanggan.' : 'Perbarui status menu sesuai ketersediaan hari ini.'}</p></div><div className="cashier-view-switch"><button className={view === 'orders' ? 'selected' : ''} onClick={() => { setView('orders'); setNotice(''); setError('') }}><span>▤</span> Pesanan</button><button className={view === 'menu' ? 'selected' : ''} onClick={() => { setLoadingProducts(true); setView('menu'); setNotice(''); setError('') }}><span style={{ display: 'inline-flex', alignItems: 'center' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg></span> Menu</button></div></div>
+      <div className="cashier-page-head">
+        <div>
+          <span className="cashier-eyebrow">SA.TUANG COFFEE · BANJAR WIJAYA</span>
+          <h1>{view === 'orders' ? 'Antrean pesanan' : 'Ketersediaan menu'}</h1>
+          <p>{view === 'orders' ? 'Pantau antrean pesanan hari ini, pembayaran, dan alur persiapan.' : 'Perbarui status menu sesuai ketersediaan hari ini.'}</p>
+        </div>
+        <div className="cashier-head-actions">
+          <div className="cashier-head-date"><span>◷</span>{todayLabel}</div>
+          <div className="cashier-view-switch">
+            <button className={view === 'orders' ? 'selected' : ''} onClick={() => { setView('orders'); setNotice(''); setError('') }}><span>▤</span> Pesanan</button>
+            <button className={view === 'menu' ? 'selected' : ''} onClick={() => { setLoadingProducts(true); setView('menu'); setNotice(''); setError('') }}><span style={{ display: 'inline-flex', alignItems: 'center' }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg></span> Menu</button>
+          </div>
+        </div>
+      </div>
       {error && <div className="cashier-alert error" role="alert"><span>!</span>{error}<button aria-label="Tutup pesan" onClick={() => setError('')}>×</button></div>}
       {notice && <div className="cashier-alert success" role="status"><span>✓</span>{notice}<button aria-label="Tutup pesan" onClick={() => setNotice('')}>×</button></div>}
 
       {view === 'orders' ? <>
-        <div className="cashier-summary-row"><div className="cashier-summary-card"><span className="summary-icon amber">◷</span><div><small>PEMBAYARAN CASH</small><strong>{activeCount}</strong></div><span>menunggu</span></div><div className="cashier-summary-card"><span className="summary-icon blue">▤</span><div><small>DI ANTREAN</small><strong>{orders.length}</strong></div><span>{tab === 'active' ? 'pesanan aktif' : 'pesanan selesai'}</span></div><div className="cashier-summary-date"><span>◷</span>{todayLabel}</div></div>
-        <div className="cashier-order-tabs"><button className={tab === 'active' ? 'active' : ''} onClick={() => { setTab('active'); setQueueFilter('BERJALAN'); setSelectedOrderNumber(null) }}>Antrean aktif</button><button className={tab === 'completed' ? 'active' : ''} onClick={() => { setTab('completed'); setQueueFilter(''); setSelectedOrderNumber(null) }}>Selesai</button></div>
+        <div className="cashier-summary-row">
+          <div className="cashier-summary-card">
+            <small>PERLU KONFIRMASI</small>
+            <strong>{needConfirmationOrders.length}</strong>
+          </div>
+
+          <div className="cashier-summary-card">
+            <small>SEDANG DIBUAT</small>
+            <strong>{inProgressOrders.length}</strong>
+          </div>
+
+          <div className="cashier-summary-card">
+            <small>SIAP DIAMBIL</small>
+            <strong>{readyOrders.length}</strong>
+          </div>
+
+          <div className="cashier-summary-card">
+            <small>SELESAI</small>
+            <strong>{completedOrders.length}</strong>
+          </div>
+
+          {cancelledOrders.length > 0 && (
+            <div className="cashier-summary-card">
+              <small>DIBATALKAN</small>
+              <strong style={{ color: '#c5221f' }}>{cancelledOrders.length}</strong>
+            </div>
+          )}
+
+          <div className="cashier-summary-card">
+            <small>TOTAL HARI INI</small>
+            <strong>{orders.length}</strong>
+          </div>
+        </div>
+
         <div className="cashier-workspace">
           <section className="cashier-queue-panel" aria-label="Daftar pesanan">
-            <div className="queue-panel-head"><div><h2>{tab === 'active' ? 'Antrean hari ini' : 'Pesanan selesai'}</h2><span>{filteredOrders.length} pesanan</span></div><button className="cashier-icon-button" onClick={() => void refreshOrders()} aria-label="Muat ulang pesanan" title="Muat ulang">↻</button></div>
+            <div className="queue-panel-head"><div><h2>Antrean hari ini</h2><span>{filteredOrders.length} pesanan</span></div><button className="cashier-icon-button" onClick={() => void refreshOrders()} aria-label="Muat ulang pesanan" title="Muat ulang">↻</button></div>
             <label className="cashier-search"><span>⌕</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari kode atau nama pelanggan" /></label>
-            {tab === 'active' && <div className="cashier-filter-row">{orderFilters.map((filter) => <button key={filter.value || 'all'} className={queueFilter === filter.value ? 'active' : ''} onClick={() => setQueueFilter(filter.value)}>{filter.label}</button>)}</div>}
+            <div className="cashier-filter-row">
+              {[
+                { id: 'ALL' as const, label: 'Semua', count: orders.length },
+                { id: 'KONFIRMASI' as const, label: 'Menunggu konfirmasi', count: needConfirmationOrders.length },
+                { id: 'SEDANG_DIBUAT' as const, label: 'Sedang dibuat', count: inProgressOrders.length },
+                { id: 'SIAP_DIAMBIL' as const, label: 'Siap diambil', count: readyOrders.length },
+                { id: 'SELESAI' as const, label: 'Selesai', count: completedOrders.length },
+                { id: 'DIBATALKAN' as const, label: 'Dibatalkan', count: cancelledOrders.length },
+              ].map((btn) => (
+                <button
+                  key={btn.id}
+                  className={queueFilter === btn.id ? 'active' : ''}
+                  onClick={() => { setQueueFilter(btn.id); setSelectedOrderNumber(null) }}
+                >
+                  {btn.label} <small style={{ opacity: 0.8, marginLeft: '3px' }}>({btn.count})</small>
+                </button>
+              ))}
+            </div>
             <div className="cashier-queue-list">
-              {loadingOrders && !orders.length ? <div className="cashier-empty"><span className="cashier-spinner" />Memuat pesanan…</div> : filteredOrders.length ? filteredOrders.map((order) => <button key={order.order_number} className={`cashier-queue-card ${selectedOrderNumber === order.order_number ? 'selected' : ''}`} onClick={() => setSelectedOrderNumber(order.order_number)}><div className="queue-card-top"><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>{order.daily_ticket_number && <span style={{ background: '#ffdd00', color: '#000', fontWeight: 900, padding: '1px 6px', borderRadius: '4px', border: '1px solid #000', fontSize: '11px' }}>{order.daily_ticket_number}</span>}<strong>{order.order_number}</strong></div><span className={`cashier-status ${order.order_status.toLowerCase()}`}>{orderStatusLabels[order.order_status] ?? order.order_status}</span></div><div className="queue-customer">{order.customer_name}</div><div className="queue-card-bottom"><span>{order.items.length} item · {dateTime(order.created_at)}</span><b>{rupiah(order.total)}</b></div><div className="queue-payment-line"><span className={`cashier-payment ${order.payment_status === 'BERHASIL' ? 'paid' : ''}`}>{order.payment_method.toUpperCase()} · {paymentStatusLabels[order.payment_status] ?? order.payment_status}</span>{order.order_status === 'MENUNGGU_PEMBAYARAN' && <OrderExpiryBadge expiresAt={order.expires_at} onExpire={() => void refreshOrders(true)} />}</div></button>) : <div className="cashier-empty"><span className="empty-cup"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span><strong>{search ? 'Pesanan tidak ditemukan' : tab === 'active' ? 'Antrean masih kosong' : 'Belum ada pesanan selesai'}</strong><p>{search ? 'Coba kode antrean atau nama yang berbeda.' : 'Pesanan akan muncul di bagian ini saat tersedia.'}</p></div>}
+              {loadingOrders && !orders.length ? <div className="cashier-empty"><span className="cashier-spinner" />Memuat pesanan…</div> : filteredOrders.length ? filteredOrders.map((order) => <button key={order.order_number} className={`cashier-queue-card ${selectedOrderNumber === order.order_number ? 'selected' : ''}`} onClick={() => setSelectedOrderNumber(order.order_number)}><div className="queue-card-top"><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>{order.daily_ticket_number && <span style={{ background: '#ffdd00', color: '#000', fontWeight: 900, padding: '1px 6px', borderRadius: '4px', border: '1px solid #000', fontSize: '11px' }}>{order.daily_ticket_number}</span>}<strong>{order.order_number}</strong></div><span className={`cashier-status ${order.order_status.toLowerCase()}`}>{orderStatusLabels[order.order_status] ?? order.order_status}</span></div><div className="queue-customer">{order.customer_name}</div><div className="queue-card-bottom"><span>{order.items.length} item · {dateTime(order.created_at)}</span><b>{rupiah(order.total)}</b></div><div className="queue-payment-line"><span className={`cashier-payment ${order.payment_status === 'BERHASIL' ? 'paid' : ''}`}>{order.payment_method === 'cash' ? 'CASH' : 'CASHLESS'} · {paymentStatusLabels[order.payment_status] ?? order.payment_status}</span>{order.order_status === 'MENUNGGU_PEMBAYARAN' && <OrderExpiryBadge expiresAt={order.expires_at} onExpire={() => void refreshOrders(true)} />}{order.payment_method !== 'cash' && order.payment_status === 'BERHASIL' && !order.payments?.some((p) => p.verified_by) && <span style={{ background: '#f59e0b', color: '#000', fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', textTransform: 'uppercase' }}>Perlu Cetak</span>}</div></button>) : <div className="cashier-empty"><span className="empty-cup"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg></span><strong>{search ? 'Pesanan tidak ditemukan' : 'Belum ada pesanan pada kategori ini'}</strong><p>{search ? 'Coba kode antrean atau nama yang berbeda.' : 'Pesanan hari ini akan muncul di bagian ini saat tersedia.'}</p></div>}
             </div>
             <div className="queue-auto-refresh"><span className="cashier-live-dot" /> Diperbarui otomatis setiap 20 detik</div>
           </section>
@@ -412,22 +525,53 @@ export default function CashierApp() {
             {selectedOrder ? <>
               <div className="detail-topline"><div><span className="cashier-eyebrow">DETAIL PESANAN</span><h2>{selectedOrder.daily_ticket_number ? `${selectedOrder.daily_ticket_number} · ` : ''}{selectedOrder.order_number}</h2></div><span className={`cashier-status large ${selectedOrder.order_status.toLowerCase()}`}>{orderStatusLabels[selectedOrder.order_status] ?? selectedOrder.order_status}</span></div>
               <div className="detail-customer"><span className="customer-avatar">{selectedOrder.customer_name.slice(0, 1).toUpperCase()}</span><div><strong>{selectedOrder.customer_name}</strong><small>{selectedOrder.customer_phone || 'Pelanggan'}</small></div><time>{dateTime(selectedOrder.created_at)}</time></div>
-              <div className="detail-payment"><div><small>METODE PEMBAYARAN</small><strong>{selectedOrder.payment_method.toUpperCase()}</strong></div><div><small>STATUS PEMBAYARAN</small><strong className={selectedOrder.payment_status === 'BERHASIL' ? 'text-success' : 'text-amber'}>{paymentStatusLabels[selectedOrder.payment_status] ?? selectedOrder.payment_status}</strong></div></div>
+              <div className="detail-payment"><div><small>METODE PEMBAYARAN</small><strong>{selectedOrder.payment_method === 'cash' ? 'CASH' : 'CASHLESS'}</strong></div><div><small>STATUS PEMBAYARAN</small><strong className={selectedOrder.payment_status === 'BERHASIL' ? 'text-success' : 'text-amber'}>{paymentStatusLabels[selectedOrder.payment_status] ?? selectedOrder.payment_status}</strong></div></div>
               {selectedOrder.payment_method === 'cash' && selectedOrder.payment_status === 'MENUNGGU' && selectedOrder.order_status === 'MENUNGGU_PEMBAYARAN' && <div className="cashier-payment-callout"><span>◉</span><div><strong>Konfirmasi pembayaran tunai</strong><small>Pastikan pembayaran diterima sebelum mengonfirmasi pesanan.</small>{selectedOrder.expires_at && <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}><OrderExpiryBadge expiresAt={selectedOrder.expires_at} onExpire={() => void refreshOrders(true)} /><small style={{ color: '#8c3d18', fontWeight: 600 }}>Otomatis batal jika melewati batas waktu pembayaran.</small></div>}</div><button className="cashier-button primary" disabled={busyAction === `payment:${selectedOrder.order_number}`} onClick={() => void handleConfirmCash(selectedOrder)}>{busyAction === `payment:${selectedOrder.order_number}` ? 'Menyimpan…' : 'Konfirmasi & cetak'}</button></div>}
+              {selectedOrder.payment_method !== 'cash' && selectedOrder.payment_status === 'BERHASIL' && !selectedOrder.payments?.some((p) => p.verified_by) && (
+                <div
+                  className="cashier-payment-callout"
+                  style={{ background: '#fef3c7', borderColor: '#f59e0b' }}
+                >
+                  <span>◉</span>
+                  <div>
+                    <strong>Konfirmasi pembayaran cashless & cetak</strong>
+                    <small>
+                      Pembayaran cashless telah diterima (Lunas). Konfirmasi pesanan dan cetak invoice + KOT untuk barista/dapur.
+                    </small>
+                  </div>
+                  <button
+                    className="cashier-button primary"
+                    disabled={busyAction === `payment:${selectedOrder.order_number}`}
+                    onClick={() => void handleConfirmOnline(selectedOrder)}
+                  >
+                    {busyAction === `payment:${selectedOrder.order_number}` ? 'Menyimpan…' : 'Konfirmasi & cetak'}
+                  </button>
+                </div>
+              )}
               {selectedOrder.order_status === 'DIBATALKAN' && <div className="cashier-payment-callout" style={{ background: '#fdf2f2', border: '1.5px solid #f8b4b4' }}><span style={{ color: '#c81e1e' }}>✕</span><div><strong style={{ color: '#9b1c1c' }}>Pesanan Dibatalkan</strong><small style={{ color: '#771d1d' }}>Pesanan ini telah dibatalkan karena tidak dibayar dalam batas waktu 10 menit atau dibatalkan sistem.</small></div></div>}
-              {selectedOrder.payment_status === 'MENUNGGU' && selectedOrder.payment_method !== 'cash' && <div className="cashier-payment-callout waiting"><span>◷</span><div><strong>Menunggu verifikasi pembayaran</strong><small>Pembayaran online akan diproses setelah konfirmasi dari penyedia pembayaran.</small></div></div>}
+              {selectedOrder.payment_status === 'MENUNGGU' && selectedOrder.payment_method !== 'cash' && <div className="cashier-payment-callout waiting"><span>◷</span><div><strong>Menunggu verifikasi pembayaran</strong><small>Pembayaran cashless akan diproses setelah konfirmasi dari penyedia pembayaran.</small></div></div>}
               <div className="detail-section-head"><div><h3>Item pesanan</h3><span>{selectedOrder.items.reduce((sum, item) => sum + item.quantity, 0)} item</span></div>{selectedOrder.payment_status === 'BERHASIL' && <button className="cashier-button outline compact cashier-print" onClick={() => { if (!openPrintWindow(selectedOrder)) setNotice('Izinkan jendela cetak pada browser untuk mencetak invoice dan KOT.') }}>Cetak invoice + KOT</button>}</div>
               <div className="cashier-order-items">{selectedPreparationGroups.map((group) => {
                 const groupActionKey = `group:${selectedOrder.order_number}:${group.itemType}`
-                const canUpdateGroup = tab === 'active' && ['PESANAN_DITERIMA', 'SEDANG_DIBUAT', 'SIAP_DIAMBIL'].includes(selectedOrder.order_status)
+                const canUpdateGroup = ['PESANAN_DITERIMA', 'SEDANG_DIBUAT', 'SIAP_DIAMBIL'].includes(selectedOrder.order_status)
                 return <section className="cashier-preparation-group" key={group.itemType}>
-                  <div className="cashier-preparation-head"><div><strong>{group.label}</strong><small>{group.items.length} item · {group.readyCount}/{group.items.length} siap</small></div><div className={`item-preparation ${group.status === 'SIAP' ? 'ready' : group.status === 'DIPROSES' ? 'processing' : ''}`}><span />{group.status === 'SIAP' ? 'Siap' : group.status === 'DIPROSES' ? 'Sedang dibuat' : 'Menunggu persiapan'}</div></div>
+                  <div className="cashier-preparation-head">
+                    <div>
+                      <strong>{group.label}</strong>
+                      <small>{group.items.length} item{selectedOrder.order_status !== 'DIBATALKAN' ? ` · ${group.readyCount}/${group.items.length} siap` : ''}</small>
+                    </div>
+                    {selectedOrder.order_status !== 'DIBATALKAN' && (
+                      <div className={`item-preparation ${group.status === 'SIAP' ? 'ready' : group.status === 'DIPROSES' ? 'processing' : ''}`}>
+                        <span />{group.status === 'SIAP' ? 'Siap' : group.status === 'DIPROSES' ? 'Sedang dibuat' : 'Menunggu persiapan'}
+                      </div>
+                    )}
+                  </div>
                   <div className="cashier-group-items">{group.items.map((item) => <article className="cashier-order-item" key={item.id}><div className="item-type-icon">{item.item_type === 'food' ? '◒' : item.item_type === 'drink' ? '◉' : '◈'}</div><div className="cashier-item-copy"><div className="cashier-item-title"><span>{item.quantity}× {item.product_name_snapshot}</span><span>{rupiah(item.line_total)}</span></div><small>{item.unit_price ? rupiah(item.unit_price) : ''}</small>{item.special_instructions && <p className="item-note">Catatan: {item.special_instructions}</p>}</div></article>)}</div>
-                  {canUpdateGroup && <div className="cashier-group-actions">{!group.allProcessing && <button disabled={busyAction === groupActionKey} onClick={() => void handlePreparationGroupStatus(selectedOrder.order_number, group.itemType, 'DIPROSES')}>{group.status === 'SIAP' ? 'Ubah kategori ke proses' : 'Mulai proses'}</button>}{group.readyCount < group.items.length && <button className="ready-action" disabled={busyAction === groupActionKey} onClick={() => void handlePreparationGroupStatus(selectedOrder.order_number, group.itemType, 'SIAP')}>Tandai kategori siap</button>}</div>}
+                  {canUpdateGroup && group.readyCount < group.items.length && <div className="cashier-group-actions"><button className="ready-action" disabled={busyAction === groupActionKey} onClick={() => void handlePreparationGroupStatus(selectedOrder.order_number, group.itemType, 'SIAP')}>Tandai kategori siap</button></div>}
                 </section>
               })}</div>
               <div className="cashier-total-box"><div><span>Subtotal</span><span>{rupiah(selectedOrder.subtotal)}</span></div>{Number(selectedOrder.discount_total) + Number(selectedOrder.points_discount) > 0 && <div><span>Diskon</span><span>−{rupiah(Number(selectedOrder.discount_total) + Number(selectedOrder.points_discount))}</span></div>}<div className="grand-total"><strong>Total</strong><strong>{rupiah(selectedOrder.total)}</strong></div></div>
-              {tab === 'active' && selectedOrder.order_status === 'SIAP_DIAMBIL' && selectedOrder.payment_status === 'BERHASIL' && <button className="cashier-button complete-order wide" disabled={busyAction === `complete:${selectedOrder.order_number}`} onClick={() => void handleComplete(selectedOrder)}>{busyAction === `complete:${selectedOrder.order_number}` ? 'Menyelesaikan…' : '✓  Tandai pesanan sudah diserahkan'}</button>}
+              {selectedOrder.order_status === 'SIAP_DIAMBIL' && selectedOrder.payment_status === 'BERHASIL' && <button className="cashier-button complete-order wide" disabled={busyAction === `complete:${selectedOrder.order_number}`} onClick={() => void handleComplete(selectedOrder)}>{busyAction === `complete:${selectedOrder.order_number}` ? 'Menyelesaikan…' : '✓  Tandai pesanan sudah diserahkan'}</button>}
               {selectedOrder.order_status === 'SELESAI' && <div className="order-complete-note"><span>✓</span> Pesanan telah diserahkan kepada pelanggan.</div>}
             </> : <div className="cashier-detail-empty"><span>▤</span><h2>Pilih pesanan</h2><p>Pilih pesanan pada daftar untuk melihat pembayaran, item, dan tindakan yang tersedia.</p></div>}
           </section>

@@ -75,32 +75,57 @@ class CashierOrderController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->validate([
-            'status' => ['nullable', 'string', 'in:MENUNGGU_PEMBAYARAN,PESANAN_DITERIMA,SEDANG_DIBUAT,SIAP_DIAMBIL'],
+            'status' => ['nullable', 'string', 'in:MENUNGGU_PEMBAYARAN,PESANAN_DITERIMA,SEDANG_DIBUAT,SIAP_DIAMBIL,SELESAI,DIBATALKAN'],
+            'scope' => ['nullable', 'string', 'in:all,active,completed,cancelled'],
             'q' => ['nullable', 'string', 'max:160'],
+            'date' => ['nullable', 'date'],
+            'all_dates' => ['nullable', 'boolean'],
         ]);
 
-        Order::query()
-            ->where('order_status', 'MENUNGGU_PEMBAYARAN')
-            ->where('payment_status', 'MENUNGGU')
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<', now())
-            ->update([
-                'order_status' => 'DIBATALKAN',
-                'cancelled_at' => now(),
-            ]);
+        Order::expirePendingOrders();
 
-        $orders = Order::query()
-            ->where('order_status', '!=', 'SELESAI')
-            ->when($filters['status'] ?? null, fn (Builder $query, string $status) => $query->where('order_status', $status))
-            ->when($filters['q'] ?? null, function (Builder $query, string $term): void {
-                $query->where(fn (Builder $nested) => $nested
-                    ->where('order_number', 'ilike', '%'.$term.'%')
-                    ->orWhere('daily_ticket_number', 'ilike', '%'.$term.'%')
-                    ->orWhere('customer_name', 'ilike', '%'.$term.'%'));
-            })
-            ->with(['items', 'payments'])
+        $query = Order::query();
+
+        // Default: filter by today's date so queue repeats daily
+        if (empty($filters['all_dates'])) {
+            $date = $filters['date'] ?? today();
+            $query->whereDate('created_at', $date);
+        }
+
+        // Apply scope if specified
+        $scope = $filters['scope'] ?? 'all';
+        if ($scope === 'active') {
+            $query->whereNotIn('order_status', ['SELESAI', 'DIBATALKAN']);
+        } elseif ($scope === 'completed') {
+            $query->where('order_status', 'SELESAI');
+        } elseif ($scope === 'cancelled') {
+            $query->where('order_status', 'DIBATALKAN');
+        }
+
+        $query->where(function (Builder $nested): void {
+            $nested->where('payment_method', 'cash')
+                ->orWhere(function (Builder $onlineQuery): void {
+                    $onlineQuery->where('payment_method', '!=', 'cash')
+                        ->where('payment_status', 'BERHASIL')
+                        ->where('order_status', '!=', 'MENUNGGU_PEMBAYARAN');
+                });
+        });
+
+        if (!empty($filters['status'])) {
+            $query->where('order_status', $filters['status']);
+        }
+
+        if (!empty($filters['q'])) {
+            $term = $filters['q'];
+            $query->where(fn (Builder $nested) => $nested
+                ->where('order_number', 'ilike', '%'.$term.'%')
+                ->orWhere('daily_ticket_number', 'ilike', '%'.$term.'%')
+                ->orWhere('customer_name', 'ilike', '%'.$term.'%'));
+        }
+
+        $orders = $query->with(['items', 'payments'])
             ->latest()
-            ->limit(100)
+            ->limit(200)
             ->get();
 
         return response()->json(['orders' => $orders]);
@@ -125,6 +150,26 @@ class CashierOrderController extends Controller
         return response()->json(['orders' => $orders]);
     }
 
+    public function cancelled(Request $request): JsonResponse
+    {
+        $filters = $request->validate(['q' => ['nullable', 'string', 'max:160']]);
+        $orders = Order::query()
+            ->where('order_status', 'DIBATALKAN')
+            ->when($filters['q'] ?? null, function (Builder $query, string $term): void {
+                $query->where(fn (Builder $nested) => $nested
+                    ->where('order_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('daily_ticket_number', 'ilike', '%'.$term.'%')
+                    ->orWhere('customer_name', 'ilike', '%'.$term.'%'));
+            })
+            ->with(['items', 'payments'])
+            ->orderByDesc('cancelled_at')
+            ->orderByDesc('updated_at')
+            ->limit(100)
+            ->get();
+
+        return response()->json(['orders' => $orders]);
+    }
+
     public function confirmPayment(Request $request, string $orderNumber): JsonResponse
     {
         $order = DB::transaction(function () use ($request, $orderNumber): Order {
@@ -134,6 +179,7 @@ class CashierOrderController extends Controller
                     'order_status' => 'DIBATALKAN',
                     'cancelled_at' => now(),
                 ]);
+                $order->refundRedeemedPointsIfCancelled();
                 throw new ConflictHttpException('Batas waktu pembayaran tunai telah kedaluwarsa. Pesanan dibatalkan.');
             }
             if ($order->payment_method !== 'cash' || $order->payment_status !== 'MENUNGGU' || $order->order_status !== 'MENUNGGU_PEMBAYARAN') {
@@ -154,24 +200,86 @@ class CashierOrderController extends Controller
             ]);
             $order->update([
                 'payment_status' => 'BERHASIL',
-                'order_status' => 'PESANAN_DITERIMA',
+                'order_status' => 'SEDANG_DIBUAT',
                 'confirmed_at' => $now,
                 'expires_at' => null,
             ]);
 
+            $order->items()->where('preparation_status', 'MENUNGGU')->update([
+                'preparation_status' => 'DIPROSES',
+            ]);
+
             if ($order->customer_id && ($customer = \App\Models\Customer::find($order->customer_id))) {
-                $earnedPoints = max(1, (int) floor((float) $order->total / 10000));
-                $customer->increment('points_balance', $earnedPoints);
+                $earnedPoints = app(\App\Services\Loyalty\LoyaltyService::class)->calculateEarnedPoints((float) $order->total);
+                if ($earnedPoints > 0) {
+                    $customer->increment('points_balance', $earnedPoints);
+                }
             }
             $order->statusHistory()->create([
                 'from_status' => 'MENUNGGU_PEMBAYARAN',
-                'to_status' => 'PESANAN_DITERIMA',
+                'to_status' => 'SEDANG_DIBUAT',
                 'actor_id' => $request->user()->id,
-                'reason' => 'Kasir mengonfirmasi pembayaran Cash.',
+                'reason' => 'Kasir mengonfirmasi pembayaran Cash dan pesanan langsung diproses.',
             ]);
             $order->printJobs()->createMany([
                 ['document_type' => 'invoice', 'destination' => 'cashier', 'status' => 'MENUNGGU'],
                 ['document_type' => 'kot', 'destination' => 'kitchen_bar', 'status' => 'MENUNGGU'],
+            ]);
+
+            return $order->load(['items', 'payments']);
+        }, 3);
+
+        return response()->json(['order' => $order]);
+    }
+
+    public function confirmOnline(Request $request, string $orderNumber): JsonResponse
+    {
+        $order = DB::transaction(function () use ($request, $orderNumber): Order {
+            $order = Order::where('order_number', $orderNumber)->lockForUpdate()->firstOrFail();
+
+            if ($order->payment_method === 'cash') {
+                throw new ConflictHttpException('Pesanan tunai harus dikonfirmasi melalui konfirmasi pembayaran tunai.');
+            }
+
+            if ($order->payment_status !== 'BERHASIL') {
+                throw new ConflictHttpException('Pembayaran cashless belum terverifikasi lunas.');
+            }
+
+            /** @var Payment|null $payment */
+            $payment = $order->payments()->lockForUpdate()->where('status', 'BERHASIL')->latest()->first()
+                ?: $order->payments()->first();
+
+            $now = now();
+            if ($payment) {
+                $payment->update([
+                    'verified_by' => $request->user()->id,
+                    'verified_at' => $payment->verified_at ?? $now,
+                ]);
+            }
+
+            if ($order->order_status === 'PESANAN_DITERIMA') {
+                $order->update(['order_status' => 'SEDANG_DIBUAT']);
+                $order->items()->where('preparation_status', 'MENUNGGU')->update([
+                    'preparation_status' => 'DIPROSES',
+                ]);
+                $order->statusHistory()->create([
+                    'from_status' => 'PESANAN_DITERIMA',
+                    'to_status' => 'SEDANG_DIBUAT',
+                    'actor_id' => $request->user()->id,
+                    'reason' => 'Kasir mengonfirmasi pembayaran cashless dan pesanan langsung diproses.',
+                ]);
+            } else {
+                $order->statusHistory()->create([
+                    'from_status' => $order->order_status,
+                    'to_status' => $order->order_status,
+                    'actor_id' => $request->user()->id,
+                    'reason' => 'Kasir mengonfirmasi pesanan cashless dan mencetak struk.',
+                ]);
+            }
+
+            $order->printJobs()->where('status', 'MENUNGGU')->update([
+                'status' => 'SELESAI',
+                'printed_at' => $now,
             ]);
 
             return $order->load(['items', 'payments']);

@@ -183,6 +183,25 @@
   color: var(--cashier-muted);
   font-size: 12px;
 }
+.cashier-head-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+.cashier-head-date {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #747a6f;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.cashier-head-date span {
+  font-size: 13px;
+  color: #8c9285;
+}
 .cashier-view-switch {
   display: flex;
   gap: 4px;
@@ -210,50 +229,35 @@
 }
 .cashier-summary-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 12px;
   margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 .cashier-summary-card {
-  min-width: 220px;
-  min-height: 67px;
-  padding: 11px 14px;
+  flex: 1 1 130px;
+  min-width: 120px;
+  padding: 12px 14px;
   display: flex;
-  align-items: center;
-  gap: 11px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
   background: #fff;
   border: 1px solid var(--cashier-line);
-}
-.summary-icon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  font-size: 17px;
-}
-.summary-icon.amber {
-  background: #f7eddd;
-  color: #a96419;
-}
-.summary-icon.blue {
-  background: #e9efec;
-  color: #47715d;
-}
-.cashier-summary-card div {
-  display: grid;
-  gap: 2px;
 }
 .cashier-summary-card small {
   font-size: 8px;
   color: #74796f;
   font-weight: 800;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 .cashier-summary-card strong {
   font:
-    700 20px/1 "Space Grotesk",
+    700 22px/1 "Space Grotesk",
     system-ui,
     sans-serif;
+  color: #20241e;
 }
 .cashier-summary-card > span:last-child {
   align-self: end;
@@ -1405,6 +1409,10 @@
   }
   .cashier-page-head h1 {
     font-size: 29px;
+  }
+  .cashier-head-actions {
+    width: 100%;
+    align-items: flex-start;
   }
   .cashier-view-switch {
     width: 100%;
