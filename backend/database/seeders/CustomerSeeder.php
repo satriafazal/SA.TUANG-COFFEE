@@ -12,7 +12,7 @@ class CustomerSeeder extends Seeder
     {
         $name = 'Member Demo SA.TUANG';
         $email = 'member@satuang.test';
-        $phone = '081234567890';
+        $phone = '080000000001';
         $password = 'member123';
         $points = 250;
 

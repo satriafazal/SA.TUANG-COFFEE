@@ -26,10 +26,30 @@ class CreateOrderService
             ]);
         }
 
-        if (!empty($data['guest_device_token'])) {
+        if (!empty($data['customer_id'])) {
             Order::expirePendingOrders();
 
             $activePending = Order::query()
+                ->where('customer_id', $data['customer_id'])
+                ->where('order_status', 'MENUNGGU_PEMBAYARAN')
+                ->where('payment_status', 'MENUNGGU')
+                ->whereDate('created_at', today())
+                ->where(function ($q) {
+                    $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->first();
+
+            if ($activePending) {
+                $ticketLabel = $activePending->daily_ticket_number ?? $activePending->order_number;
+                throw ValidationException::withMessages([
+                    'items' => "Anda masih memiliki pesanan {$ticketLabel} yang belum dibayar di kasir. Silakan bayar pesanan tersebut atau tunggu hingga hangus untuk membuat pesanan baru.",
+                ]);
+            }
+        } elseif (!empty($data['guest_device_token'])) {
+            Order::expirePendingOrders();
+
+            $activePending = Order::query()
+                ->whereNull('customer_id')
                 ->where('guest_device_token', $data['guest_device_token'])
                 ->where('order_status', 'MENUNGGU_PEMBAYARAN')
                 ->where('payment_status', 'MENUNGGU')

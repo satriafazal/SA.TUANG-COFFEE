@@ -105,6 +105,7 @@ class OrderController extends Controller
         $user = auth('sanctum')->user();
         if ($user instanceof \App\Models\Customer) {
             $data['customer_id'] = $user->id;
+            $data['guest_device_token'] = null;
         }
 
         $idempotencyKey = $request->header('Idempotency-Key');
@@ -138,11 +139,11 @@ class OrderController extends Controller
 
         // Auto-sync any pending online orders with Midtrans
         $pendingOnlineOrders = Order::query()
-            ->when($customerId, function ($query) use ($customerId, $deviceToken) {
-                $query->where('customer_id', $customerId)
-                    ->when($deviceToken, fn ($nested) => $nested->orWhere('guest_device_token', $deviceToken));
+            ->when($customerId, function ($query) use ($customerId) {
+                $query->where('customer_id', $customerId);
             }, function ($query) use ($deviceToken) {
-                $query->where('guest_device_token', $deviceToken)
+                $query->whereNull('customer_id')
+                    ->where('guest_device_token', $deviceToken)
                     ->whereDate('created_at', today());
             })
             ->where('payment_status', 'MENUNGGU')
@@ -158,11 +159,11 @@ class OrderController extends Controller
         }
 
         $orders = \App\Models\Order::query()
-            ->when($customerId, function ($query) use ($customerId, $deviceToken) {
-                $query->where('customer_id', $customerId)
-                    ->when($deviceToken, fn ($nested) => $nested->orWhere('guest_device_token', $deviceToken));
+            ->when($customerId, function ($query) use ($customerId) {
+                $query->where('customer_id', $customerId);
             }, function ($query) use ($deviceToken) {
-                $query->where('guest_device_token', $deviceToken)
+                $query->whereNull('customer_id')
+                    ->where('guest_device_token', $deviceToken)
                     ->whereDate('created_at', today());
             })
             ->with(['items', 'payments'])
@@ -185,7 +186,7 @@ class OrderController extends Controller
             $isOwner = false;
             if ($customerId && $order->customer_id === $customerId) {
                 $isOwner = true;
-            } elseif ($deviceToken && $order->guest_device_token === $deviceToken) {
+            } elseif (!$order->customer_id && $deviceToken && $order->guest_device_token === $deviceToken) {
                 $isOwner = true;
             } elseif (
                 !$order->customer_id

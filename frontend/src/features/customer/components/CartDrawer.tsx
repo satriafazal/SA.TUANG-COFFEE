@@ -305,10 +305,10 @@ export function CartDrawer({
                 className="cart-loyalty-box"
                 style={{
                   margin: '12px 16px',
-                  padding: '12px 14px',
-                  background: usePoints ? '#f0fdf4' : '#faf8f5',
-                  border: usePoints ? '1.5px solid #86efac' : '1px solid #e7e2d9',
-                  borderRadius: '8px',
+                  padding: currentMember ? '12px 14px' : '10px 14px',
+                  background: currentMember ? (usePoints ? '#f0fdf4' : '#faf8f5') : '#f6ede0',
+                  border: currentMember ? (usePoints ? '1.5px solid #86efac' : '1px solid #e7e2d9') : '1.5px dashed var(--accent)',
+                  borderRadius: '6px',
                   transition: 'all 0.2s ease',
                 }}
               >
@@ -429,30 +429,21 @@ export function CartDrawer({
                     )}
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-                    <div>
-                      <strong style={{ fontSize: '12px', color: '#374151', display: 'block' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                    <div style={{ fontSize: '12px', lineHeight: 1.4 }}>
+                      <strong style={{ display: 'block', color: 'var(--ink)' }}>
                         ★ Poin Loyalitas Member
                       </strong>
-                      <small style={{ color: '#6b7280', fontSize: '11px' }}>
+                      <span style={{ color: '#686760' }}>
                         Dapatkan poin cashback di setiap belanjaan Anda!
-                      </small>
+                      </span>
                     </div>
                     {onSwitchToMember && (
                       <button
                         type="button"
+                        className="button button-dark"
+                        style={{ minHeight: '32px', padding: '0 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
                         onClick={onSwitchToMember}
-                        style={{
-                          padding: '4px 10px',
-                          fontSize: '11px',
-                          fontWeight: 600,
-                          borderRadius: '6px',
-                          border: '1px solid #2c221e',
-                          background: '#2c221e',
-                          color: '#fff',
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                        }}
                       >
                         Masuk Member
                       </button>
@@ -486,36 +477,6 @@ export function CartDrawer({
             </div>
 
             <form className="checkout-form" onSubmit={submitOrder}>
-              {sessionMode === 'guest' && onSwitchToMember && (
-                <div
-                  className="cart-guest-switch"
-                  style={{
-                    padding: '10px 14px',
-                    background: '#f6ede0',
-                    border: '1.5px dashed var(--accent)',
-                    borderRadius: '6px',
-                    marginBottom: '16px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: '12px',
-                  }}
-                >
-                  <div style={{ fontSize: '12px', lineHeight: 1.4 }}>
-                    <strong style={{ display: 'block', color: 'var(--ink)' }}>Punya akun Member?</strong>
-                    <span style={{ color: '#686760' }}>Masuk untuk kumpulkan poin & cek riwayat.</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="button button-dark"
-                    style={{ minHeight: '32px', padding: '0 12px', fontSize: '11px', whiteSpace: 'nowrap' }}
-                    onClick={onSwitchToMember}
-                  >
-                    Masuk
-                  </button>
-                </div>
-              )}
-
               <label>
                 Nama untuk pesanan
                 <input

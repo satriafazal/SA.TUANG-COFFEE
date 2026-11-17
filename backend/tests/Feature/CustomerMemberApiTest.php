@@ -247,4 +247,91 @@ class CustomerMemberApiTest extends TestCase
         $res->assertCreated()
             ->assertJsonPath('order.customer_name', 'Fresh Guest Today');
     }
+
+    public function test_guest_can_order_with_phone_and_later_register_member_with_same_phone(): void
+    {
+        $category = Category::create(['name' => 'Manual Brew', 'slug' => 'manual-brew', 'is_active' => true]);
+        $product = Product::create([
+            'category_id' => $category->id,
+            'name' => 'V60 Gayo',
+            'slug' => 'v60-gayo',
+            'item_type' => 'drink',
+            'price' => '28000.00',
+            'is_active' => true,
+            'is_available' => true,
+        ]);
+
+        $testPhone = '081288889999';
+
+        // 1. Guest checkout dengan memasukkan no telp di keranjang
+        $resOrder = $this->postJson('/api/v1/orders', [
+            'customer_name' => 'Kismanto Guest',
+            'customer_phone' => $testPhone,
+            'guest_device_token' => 'guest-device-token-kismanto',
+            'payment_method' => 'cash',
+            'items' => [
+                ['product_id' => $product->id, 'quantity' => 1],
+            ],
+        ]);
+        $resOrder->assertCreated();
+
+        // 2. Pastikan nomor telp guest TIDAK disimpan sebagai data member
+        $this->assertFalse(Customer::query()->where('phone', $testPhone)->exists());
+
+        $guestOrder = Order::query()->where('customer_phone', $testPhone)->first();
+        $this->assertNotNull($guestOrder);
+        $this->assertNull($guestOrder->customer_id);
+
+        // 3. Kemudian pelanggan tertarik daftar member menggunakan nomor yang sama
+        $resRegister = $this->postJson('/api/v1/members/register', [
+            'name' => 'Kismanto Member',
+            'email' => 'kismanto@test.com',
+            'phone' => $testPhone,
+            'password' => 'kismanto123',
+            'password_confirmation' => 'kismanto123',
+        ]);
+
+        $resRegister->assertCreated()
+            ->assertJsonPath('customer.phone', $testPhone);
+
+        // 4. Pastikan pesanan guest sebelumnya TETAP berdiri sendiri (TIDAK terhubung ke akun member)
+        $this->assertNull($guestOrder->fresh()->customer_id);
+
+        $memberToken = $resRegister->json('token');
+
+        // 5. Pesanan member TIDAK menampilkan pesanan guest, meskipun dari device token yang sama
+        $resMemberOrders = $this->withHeader('Authorization', "Bearer {$memberToken}")
+            ->getJson('/api/v1/orders/my-orders?device_token=guest-device-token-kismanto');
+        $resMemberOrders->assertOk()
+            ->assertJsonCount(0, 'orders');
+
+        // 6. Buat pesanan sebagai member
+        $resMemberOrder = $this->withHeader('Authorization', "Bearer {$memberToken}")
+            ->postJson('/api/v1/orders', [
+                'customer_name' => 'Kismanto Member',
+                'customer_phone' => $testPhone,
+                'guest_device_token' => 'guest-device-token-kismanto',
+                'payment_method' => 'cash',
+                'items' => [
+                    ['product_id' => $product->id, 'quantity' => 2],
+                ],
+            ]);
+        $resMemberOrder->assertCreated();
+        $this->assertNotNull($resMemberOrder->json('order.customer_id'));
+
+        // 7. Pesanan member HANYA menampilkan pesanan milik member tersebut
+        $resMemberOrdersAfter = $this->withHeader('Authorization', "Bearer {$memberToken}")
+            ->getJson('/api/v1/orders/my-orders?device_token=guest-device-token-kismanto');
+        $resMemberOrdersAfter->assertOk()
+            ->assertJsonCount(1, 'orders')
+            ->assertJsonPath('orders.0.order_number', $resMemberOrder->json('order.order_number'));
+
+        // 8. Sebaliknya, saat diakses sebagai guest (tanpa token member), hanya menampilkan pesanan guest
+        auth()->forgetGuards();
+        $resGuestOrders = $this->flushHeaders()
+            ->getJson('/api/v1/orders/my-orders?device_token=guest-device-token-kismanto');
+        $resGuestOrders->assertOk()
+            ->assertJsonCount(1, 'orders')
+            ->assertJsonPath('orders.0.order_number', $guestOrder->order_number);
+    }
 }

@@ -1,3 +1,5 @@
+import { generateUUID } from './uuid'
+
 const DEVICE_TOKEN_KEY = 'satuang-device-id'
 const CART_KEY = 'satuang-cart'
 const GUEST_NAME_KEY = 'satuang-guest-name'
@@ -51,7 +53,7 @@ export function getOrCreateDeviceToken(): string {
     // New day (past 00:00 midnight) or first visit: clear yesterday's state
     clearPreviousDayGuestSession()
 
-    const token = crypto.randomUUID()
+    const token = generateUUID()
     const sessionData: DeviceSessionRecord = {
       token,
       date: today,
@@ -67,7 +69,7 @@ export function forceResetDeviceSession(): string {
   const today = getTodayDateString()
   try {
     clearPreviousDayGuestSession()
-    const token = crypto.randomUUID()
+    const token = generateUUID()
     const sessionData: DeviceSessionRecord = {
       token,
       date: today,

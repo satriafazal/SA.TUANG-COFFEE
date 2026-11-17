@@ -1,3 +1,5 @@
+import { generateUUID } from '../utils/uuid'
+
 export type CustomerMode = 'guest' | 'member'
 
 export type PrototypeSession =
@@ -85,7 +87,7 @@ export function savePrototypeSession(session: PrototypeSession | null) {
 }
 
 export function newGuestSession(): PrototypeSession {
-  const session: PrototypeSession = { mode: 'guest', token: crypto.randomUUID() }
+  const session: PrototypeSession = { mode: 'guest', token: generateUUID() }
   savePrototypeSession(session)
   return session
 }

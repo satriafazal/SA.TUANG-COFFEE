@@ -2,10 +2,29 @@ import type { OrderReceipt, Product, Category, TrackedOrder, CustomerBundle, Cus
 
 const API_ROOT = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
 
+function sanitizeErrorMessage(rawMessage: unknown, fallback: string): string {
+  if (!rawMessage || typeof rawMessage !== 'string') return fallback
+  if (rawMessage.includes('No query results for model')) {
+    if (rawMessage.includes('Order')) return 'Data pesanan tidak ditemukan.'
+    if (rawMessage.includes('Product')) return 'Data menu tidak ditemukan.'
+    if (rawMessage.includes('Category')) return 'Data kategori tidak ditemukan.'
+    if (rawMessage.includes('Promotion')) return 'Data promo tidak ditemukan.'
+    if (rawMessage.includes('Bundle')) return 'Data paket menu tidak ditemukan.'
+    if (rawMessage.includes('Banner')) return 'Data banner tidak ditemukan.'
+    if (rawMessage.includes('User')) return 'Data pengguna atau staf tidak ditemukan.'
+    return 'Data yang diminta tidak ditemukan.'
+  }
+  return rawMessage
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const staffToken = localStorage.getItem('satuang-token')
   const customerToken = localStorage.getItem('satuang-customer-token')
-  const token = path.startsWith('/members') ? customerToken : (staffToken || customerToken)
+  const isStaffPath =
+    path.startsWith('/admin') ||
+    path.startsWith('/cashier') ||
+    path.startsWith('/auth')
+  const token = isStaffPath ? staffToken : customerToken
   const response = await fetch(`${API_ROOT}${path}`, {
     ...options,
     headers: {
@@ -18,7 +37,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
     const firstError = Object.values(body.errors ?? {}).flat()[0]
-    throw new Error(firstError?.toString() ?? body.message ?? 'Terjadi kesalahan. Coba lagi.')
+    const raw = firstError?.toString() ?? body.message
+    throw new Error(sanitizeErrorMessage(raw, 'Terjadi kesalahan. Coba lagi.'))
   }
   return body as T
 }
@@ -442,10 +462,14 @@ export function getAdminAuditLogs() {
   return request<{ audit_logs: AdminAuditLog[] }>('/admin/audit-logs')
 }
 
-export function getCashierOrders(search = '', date?: string) {
+export function getCashierOrders(arg1: boolean | string = '', arg2 = '') {
   const query = new URLSearchParams()
-  if (search.trim()) query.set('q', search.trim())
-  if (date) query.set('date', date)
+  if (typeof arg1 === 'boolean') {
+    if (arg2.trim()) query.set('q', arg2.trim())
+    return request<{ orders: StaffOrder[] }>(`/cashier/orders${arg1 ? '/completed' : ''}${query.size ? `?${query}` : ''}`)
+  }
+  if (arg1.trim()) query.set('q', arg1.trim())
+  if (arg2) query.set('date', arg2)
   return request<{ orders: StaffOrder[] }>(`/cashier/orders${query.size ? `?${query}` : ''}`)
 }
 
@@ -512,7 +536,8 @@ export async function uploadAdminImage(file: File): Promise<{ path: string; url:
   const body = await response.json().catch(() => ({}))
   if (!response.ok) {
     const firstError = Object.values(body.errors ?? {}).flat()[0]
-    throw new Error(firstError?.toString() ?? body.message ?? 'Gagal mengunggah gambar.')
+    const raw = firstError?.toString() ?? body.message
+    throw new Error(sanitizeErrorMessage(raw, 'Gagal mengunggah gambar.'))
   }
   return body as { path: string; url: string; filename: string }
 }
